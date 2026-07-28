@@ -1,4 +1,4 @@
-// Copyright (c) 2026 WSO2 LLC. (http://www.wso2.org).
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
 //
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -21,10 +21,6 @@ import ballerina/uuid;
 // ***** Rule-based evaluations *****
 
 # Checks that agent response lengths fall within the given bounds (inclusive).
-#
-# Accepts either a conversation thread loaded from an eval set (every trace is
-# replayed into the thread's session and checked) or a single user query (run in
-# a fresh, randomly generated session with no leftover memory).
 #
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
@@ -55,7 +51,7 @@ public isolated function assertLengthCompliance(ai:Agent targetAgent, ai:Convers
 }
 
 # The matching strategies supported by the tool-trajectory evaluation.
-public enum Mode {
+public enum TrajectoryMatchMode {
     # The agent must make exactly the reference tool calls, in the same order
     STRICT,
     # The agent must make exactly the reference tool calls, in any order
@@ -71,11 +67,6 @@ public enum Mode {
 # A tool call matches when both the tool name and its arguments are equal;
 # tool-call IDs are ignored since they differ between runs.
 #
-# The strictness of the comparison is controlled by `matchMode`:
-# `STRICT` (exact calls, same order), `UNORDERED` (exact calls, any order),
-# `SUBSET` (no calls outside the reference), `SUPERSET` (all reference calls
-# present, extras allowed).
-#
 # + targetAgent - The agent under evaluation
 # + thread - The conversation thread loaded from an eval set
 # + matchMode - The trajectory matching strategy to apply
@@ -87,7 +78,7 @@ public enum Mode {
     needsEvalset: true
 }
 public isolated function evaluateToolTrajectory(ai:Agent targetAgent, ai:ConversationThread thread,
-        Mode matchMode = STRICT) returns error? {
+        TrajectoryMatchMode matchMode = STRICT) returns error? {
     foreach ai:Trace expectedTrace in thread.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
         ai:Trace actualTrace = check targetAgent.run(query = userQuery, sessionId = thread.id);
@@ -101,13 +92,13 @@ public isolated function evaluateToolTrajectory(ai:Agent targetAgent, ai:Convers
 }
 
 # Checks that every agent response exactly matches the expected response recorded
-# in the eval set. By default, leading/trailing whitespace is stripped before
-# comparing; every other character — including inner whitespace, punctuation, and
-# formatting — must match exactly.
+# in the eval set. Every character must match, apart from leading/trailing
+# whitespace when `stripWhitespace` is set.
 #
 # + targetAgent - The agent under evaluation
 # + thread - The conversation thread loaded from an eval set
-# + caseSensitive - Whether the comparison is case-sensitive
+# + caseSensitive - Whether the comparison is case-sensitive. When `false`, only ASCII
+#                   A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + stripWhitespace - Whether to strip leading/trailing whitespace before comparing
 # + return - `()` if every trace matches, or an error describing the first mismatch
 @EvalTemplate {
@@ -138,19 +129,15 @@ public isolated function assertExactMatch(ai:Agent targetAgent, ai:ConversationT
     }
 }
 
-# Checks that agent responses contain none of the prohibited strings.
-#
-# Accepts either a conversation thread loaded from an eval set (every trace is
-# replayed into the thread's session; the whole thread fails if even one response
-# contains a prohibited string) or a single user query (run in a fresh, randomly
-# generated session).
-#
-# An empty prohibited list is treated as a configuration error and fails.
+# Checks that agent responses contain none of the prohibited strings. For a thread,
+# one offending response fails the whole thread. An empty prohibited list is a
+# configuration error and fails.
 #
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
 # + prohibitedStrings - The strings that must not appear in any agent response
-# + caseSensitive - Whether the matching is case-sensitive
+# + caseSensitive - Whether the matching is case-sensitive. When `false`, only ASCII
+#                   A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + return - `()` if no prohibited content is found, or an error describing the first violation
 @EvalTemplate {
     label: "Content Safety",
@@ -179,12 +166,12 @@ public isolated function assertContentSafety(ai:Agent targetAgent, ai:Conversati
 }
 
 # Checks that the expected response recorded in the eval set appears as a substring
-# of the agent response. Useful when the agent may elaborate but must include a
-# canonical answer verbatim.
+# of the agent response, allowing the agent to elaborate around a canonical answer.
 #
 # + targetAgent - The agent under evaluation
 # + thread - The conversation thread loaded from an eval set
-# + caseSensitive - Whether the substring matching is case-sensitive
+# + caseSensitive - Whether the substring matching is case-sensitive. When `false`, only
+#                   ASCII A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + return - `()` if every trace passes, or an error describing the first miss
 @EvalTemplate {
     label: "Contains Match",
@@ -209,10 +196,6 @@ public isolated function assertContainsMatch(ai:Agent targetAgent, ai:Conversati
 }
 
 # Checks that the agent completes every run within the given number of iterations.
-#
-# Accepts either a conversation thread loaded from an eval set (every trace is
-# replayed into the thread's session and its run checked) or a single user query
-# (run in a fresh, randomly generated session).
 #
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
@@ -239,20 +222,16 @@ public isolated function assertIterationEfficiency(ai:Agent targetAgent, ai:Conv
     }
 }
 
-# Checks that the required strings all appear in the agent's output.
-#
-# Accepts either a conversation thread loaded from an eval set or a single user
-# query. For a thread, every trace is replayed into the thread's session and the
-# check runs against the combined output of the whole thread: each required
-# string must appear in at least one response, otherwise the thread fails. For
-# a single query, the one response must contain every required string.
-#
-# An empty required list is treated as a configuration error and fails.
+# Checks that the required strings all appear in the agent's output. For a thread,
+# the check runs against the combined output of every trace, so each required string
+# need only appear in one response. An empty required list is a configuration error
+# and fails.
 #
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
 # + requiredStrings - The strings that must all appear in the agent output
-# + caseSensitive - Whether the matching is case-sensitive
+# + caseSensitive - Whether the matching is case-sensitive. When `false`, only ASCII
+#                   A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + return - `()` if every required string is found, or an error listing the missing ones
 @EvalTemplate {
     label: "Content Coverage",
@@ -293,10 +272,6 @@ public isolated function assertContentCoverage(ai:Agent targetAgent, ai:Conversa
 }
 
 # Checks that the agent produces every response within the given time limit.
-#
-# Accepts either a conversation thread loaded from an eval set (every trace is
-# replayed into the thread's session and its run timed) or a single user query
-# (run in a fresh, randomly generated session).
 #
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
@@ -392,7 +367,7 @@ isolated function excerptAround(string text, int mismatchIndex) returns string {
 }
 
 isolated function matchTrajectory(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls,
-        Mode matchMode) returns boolean {
+        TrajectoryMatchMode matchMode) returns boolean {
     match matchMode {
         STRICT => {
             return matchStrict(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
@@ -410,8 +385,12 @@ isolated function matchTrajectory(ai:FunctionCall[] expectedToolCalls, ai:Functi
     return false;
 }
 
+// `ai:FunctionCall.arguments` is nilable, so a call recorded with an explicit null
+// and one carrying an empty map describe the same invocation. Normalize both to `{}`
+// before comparing, matching what `describeToolCalls` renders.
 isolated function callsMatch(ai:FunctionCall expectedCall, ai:FunctionCall actualCall) returns boolean =>
-    expectedCall.name == actualCall.name && expectedCall.arguments == actualCall.arguments;
+    expectedCall.name == actualCall.name &&
+        (expectedCall.arguments ?: {}) == (actualCall.arguments ?: {});
 
 isolated function matchStrict(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
         returns boolean {

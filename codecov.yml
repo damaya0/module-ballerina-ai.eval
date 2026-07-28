@@ -1,11 +1,3 @@
-fixes:
-  - "ballerina/ai/np/**/::../ballerina/"
-  - "io/ballerina/lib/ai/np/compilerplugin/::./compiler-plugin/src/main/java/io/ballerina/lib/ai/np/compilerplugin/"
-
-ignore:
-  - "ballerina-tests"
-  - "examples"
-
 coverage:
   precision: 2
   round: down

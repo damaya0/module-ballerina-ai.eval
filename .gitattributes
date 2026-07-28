@@ -9,3 +9,6 @@
 
 # Ensure all Java files use LF.
 *.java eol=lf
+
+# Ensure all Ballerina sources use LF (`bal format` writes CRLF on Windows).
+*.bal text eol=lf

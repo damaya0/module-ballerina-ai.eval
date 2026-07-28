@@ -1,4 +1,4 @@
-// Copyright (c) 2026 WSO2 LLC. (http://www.wso2.org).
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
 //
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -23,12 +23,6 @@ import ballerina/test;
 // every scenario runs deterministically, offline, and without a model provider
 // or credentials. No test in this module makes a real LLM call.
 
-// Mirrors the judge output shape the LLM-judge evaluations expect from `generate()`.
-type MockVerdict record {|
-    float evalScore;
-    string judgeReasoning;
-|};
-
 // Builds an agent whose `run()` always produces a trace carrying the given response.
 function mockAgent(string mockResponse) returns ai:Agent {
     ai:Agent agentMock = test:mock(ai:Agent);
@@ -52,7 +46,7 @@ function mockAgent(string mockResponse) returns ai:Agent {
 // calls the real provider's `init` or reaches the network.
 function mockJudge(float evalScore, string judgeReasoning) returns ai:ModelProvider {
     ai:Wso2ModelProvider judgeMock = test:mock(ai:Wso2ModelProvider);
-    MockVerdict mockVerdict = {evalScore, judgeReasoning};
+    JudgeVerdict mockVerdict = {evalScore, judgeReasoning};
     test:prepare(judgeMock).when("generate").thenReturn(mockVerdict);
     return judgeMock;
 }

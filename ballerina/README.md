@@ -1,31 +1,29 @@
 # Overview
 
 This module provides evaluation templates for AI agents built with the `ballerina/ai` module. Each
-template is a function that runs the agent under evaluation and either returns `()` when the agent
-passes or an `error` describing the first failure, so evaluations plug directly into Ballerina test
-functions and their `minPassRate` aggregation.
+template runs the agent and returns `()` on success or an `error` describing the first failure, so
+evaluations run as ordinary Ballerina test functions.
 
-Templates come in two families:
+There are two families:
 
-- **Rule-based** — scored deterministically in code, with no LLM involved.
-- **LLM-as-a-judge** — scored by a judge model that returns a score and its reasoning. The
+- **Rule-based** — scored in code, with no LLM involved.
+- **LLM-as-a-judge** — scored by a judge model, which returns a score and its reasoning. The
   evaluation passes when the score reaches the configured threshold.
 
-Every template carries an `@EvalTemplate` annotation describing its label, its kind, and whether it
-needs an eval set, so low-code tooling can discover and present the available templates.
+Every template carries an `@EvalTemplate` annotation giving its label, kind, and whether it needs an
+eval set, for low-code tooling to discover and present them.
 
 ## Inputs
 
 Templates accept one of two inputs:
 
 - An **eval set conversation thread** (`ai:ConversationThread`), loaded with
-  `ai:loadConversationThreads`. Every trace in the thread is replayed into the thread's session, so
-  recorded multi-turn context is preserved. Templates that compare against a recorded reference
-  response — exact match, contains match, tool trajectory, semantic similarity — require this.
-- A **single user query** (`string`), run in a fresh randomly generated session so no memory leaks
-  between evaluations.
+  `ai:loadConversationThreads`. Every trace is replayed into the thread's session, preserving
+  recorded multi-turn context. Templates comparing against a recorded reference response require
+  this.
+- A **single user query** (`string`), run in a fresh randomly generated session.
 
-Templates that need no reference data accept either, as `ai:ConversationThread|string`.
+Templates needing no reference data accept either, as `ai:ConversationThread|string`.
 
 ## Rule-based templates
 
@@ -38,22 +36,24 @@ Templates that need no reference data accept either, as `ai:ConversationThread|s
 | `assertLatencyPerformance` | No | The agent responds within `maxLatencySeconds` |
 | `assertExactMatch` | Yes | Response matches the recorded response character for character |
 | `assertContainsMatch` | Yes | The recorded response appears as a substring of the response |
-| `evaluateToolTrajectory` | Yes | Tool calls match the recorded trajectory under the given `Mode` |
+| `evaluateToolTrajectory` | Yes | Tool calls match the recorded trajectory under the given `TrajectoryMatchMode` |
 
 `evaluateToolTrajectory` supports four matching modes: `STRICT` (same calls, same order),
 `UNORDERED` (same calls, any order), `SUBSET` (every actual call was expected), and `SUPERSET`
 (every expected call was made).
 
+String matching with `caseSensitive = false` folds ASCII A–Z only; non-ASCII letters still compare
+case-sensitively.
+
 ## LLM-as-a-judge templates
 
-All judges take a `judgeModel` and a `judgeScoreThreshold` (default `0.8`). The evaluation fails
-when the judge's score falls below the threshold, and the returned error carries the metric, the
-query, the score, and the judge's reasoning.
+All judges take a `judgeModel` and a `judgeScoreThreshold` (default `0.8`). A score below the
+threshold fails, and the error carries the metric, the query, the score, and the judge's reasoning.
 
 | Function | Needs eval set | Judges |
 | -------- | -------------- | ------ |
 | `evaluateOutputAccuracy` | No | Factual correctness of the response |
-| `evaluateHelpfulness` | No | Whether the response actually helps the user |
+| `evaluateHelpfulness` | No | Whether the response helps the user |
 | `evaluateClarity` | No | How understandable the response is |
 | `evaluateCompleteness` | No | Whether the response addresses the whole query |
 | `evaluateRelevance` | No | Whether the response stays on topic |
@@ -69,7 +69,7 @@ query, the score, and the judge's reasoning.
 | `evaluateSemanticSimilarity` | Yes | Semantic agreement with the recorded response |
 
 `evaluateGroundedness` and `evaluateErrorRecovery` pass without calling the judge when the trace
-carries no tool evidence and no errors respectively, since there is nothing to judge.
+carries no tool evidence and no errors respectively.
 
 ## Configuring the judge model
 
@@ -88,8 +88,7 @@ and obtain the provider with `ai:getDefaultModelProvider()`:
 final ai:ModelProvider judgeModel = check ai:getDefaultModelProvider();
 ```
 
-Because judges are LLM calls, prefer a low temperature for the judge model so scores are stable
-across runs.
+Prefer a low temperature for the judge model, so scores stay stable across runs.
 
 ## Usage
 
@@ -126,6 +125,5 @@ function agentFollowsToolTrajectory(ai:ConversationThread thread) returns error?
 }
 ```
 
-Because each template returns an `error` rather than a score, a thread either passes or fails as a
-whole. `minPassRate` on the test configuration provides the proportional signal across threads or
-queries.
+Templates return an `error` rather than a score, so a thread passes or fails as a whole. Use
+`minPassRate` for a proportional signal across threads or queries.

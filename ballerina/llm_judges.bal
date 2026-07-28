@@ -1,4 +1,4 @@
-// Copyright (c) 2026 WSO2 LLC. (http://www.wso2.org).
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
 //
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -17,13 +17,11 @@
 import ballerina/ai;
 import ballerina/uuid;
 
-// LLM-as-judge evaluators. Each judges the agent's ACTUAL run,
-// so every evaluator accepts either an eval set conversation thread or a single
-// user query. All judges return a JudgeVerdict; the reasoning surfaces only in
-// failure errors.
+// LLM-as-judge evaluators. Each scores the agent's actual run and accepts either an
+// eval set conversation thread or a single user query.
 
 # The structured output of an LLM judge: a score plus the reasoning behind it.
-# The reasoning is surfaced only in failure errors; passing evaluations stay silent.
+# The reasoning surfaces only in failure errors; passing evaluations stay silent.
 type JudgeVerdict record {|
     # The score assigned by the judge, in the range [0.0, 1.0]
     float evalScore;
@@ -34,7 +32,7 @@ type JudgeVerdict record {|
 isolated function checkScore(string metricName, string userQuery,
         JudgeVerdict judgeVerdict, float passingScore) returns error? {
     if judgeVerdict.evalScore < passingScore {
-        return error(string `[${metricName}] query "${userQuery}": judge score ${judgeVerdict.evalScore} is below the passing score ${passingScore}. Judge reasoning: ${judgeVerdict.judgeReasoning}."`);
+        return error(string `[${metricName}] query "${userQuery}": judge score ${judgeVerdict.evalScore} is below the passing score ${passingScore}. Judge reasoning: ${judgeVerdict.judgeReasoning}`);
     }
 }
 
@@ -48,14 +46,14 @@ isolated function runTraceJudge(ai:Agent targetAgent, ai:ConversationThread|stri
     if queries is string {
         ai:Trace actualTrace = check targetAgent.run(query = queries, sessionId = uuid:createType4AsString());
         JudgeVerdict judgeVerdict = check scoreTrace(queries, actualTrace);
-        return checkScore(metricName = metricName, userQuery = queries,judgeVerdict = judgeVerdict,
+        return checkScore(metricName = metricName, userQuery = queries, judgeVerdict = judgeVerdict,
                 passingScore = judgeScoreThreshold);
     }
     foreach ai:Trace expectedTrace in queries.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
         ai:Trace actualTrace = check targetAgent.run(query = userQuery, sessionId = queries.id);
         JudgeVerdict judgeVerdict = check scoreTrace(userQuery, actualTrace);
-        check checkScore(metricName = metricName, userQuery = userQuery,judgeVerdict = judgeVerdict,
+        check checkScore(metricName = metricName, userQuery = userQuery, judgeVerdict = judgeVerdict,
                 passingScore = judgeScoreThreshold);
     }
 }
@@ -104,17 +102,13 @@ public isolated function evaluateSemanticSimilarity(ai:Agent targetAgent, ai:Con
         1.0  = Semantically equivalent: same meaning, same key facts, even if worded differently
 
         Along with the score, provide a brief reasoning that justifies it, citing the specific similarities or differences you found.`);
-        check checkScore(metricName = "semantic-similarity", userQuery = userQuery,judgeVerdict = judgeVerdict,
+        check checkScore(metricName = "semantic-similarity", userQuery = userQuery, judgeVerdict = judgeVerdict,
                 passingScore = judgeScoreThreshold);
     }
 }
 
 # Uses an LLM judge to check that the factual information in agent responses is
 # correct and reliable.
-#
-# Accepts either a conversation thread loaded from an eval set (every trace is
-# replayed into the thread's session and judged) or a single user query (run in
-# a fresh, randomly generated session with no leftover memory).
 #
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
@@ -160,8 +154,8 @@ public isolated function evaluateOutputAccuracy(ai:Agent targetAgent, ai:Convers
 
 // ***** Response-quality judges *****
 
-# Uses an LLM judge to check whether the agent response actually helps the user
-# with what they asked for.
+# Uses an LLM judge to check whether the agent response helps the user with what
+# they asked for.
 #
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
@@ -339,7 +333,7 @@ public isolated function evaluateRelevance(ai:Agent targetAgent, ai:Conversation
 }
 
 # Uses an LLM judge to check whether the agent response maintains logical flow and
-# internal consistency throughout.
+# internal consistency.
 #
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
@@ -805,22 +799,33 @@ isolated function formatIterations(ai:Trace actualTrace) returns string {
 // activity is aggregated from the final iteration's history plus iteration outputs.
 isolated function formatToolEvidence(ai:Trace actualTrace) returns string {
     string[] evidenceLines = [];
+    map<()> seenLines = {};
     foreach ai:Iteration iteration in actualTrace.iterations {
         foreach var iterationOutput in iteration.output {
             if iterationOutput is ai:ChatFunctionMessage {
-                evidenceLines.push(string `- tool "${iterationOutput.name}" returned: ${iterationOutput.content ?: "(no content)"}`);
+                addEvidenceLine(evidenceLines, seenLines, iterationOutput);
             }
         }
         foreach ai:ChatMessage historyMessage in iteration.history {
             if historyMessage is ai:ChatFunctionMessage {
-                string evidenceLine = string `- tool "${historyMessage.name}" returned: ${historyMessage.content ?: "(no content)"}`;
-                if evidenceLines.indexOf(evidenceLine) is () {
-                    evidenceLines.push(evidenceLine);
-                }
+                addEvidenceLine(evidenceLines, seenLines, historyMessage);
             }
         }
     }
     return string:'join("\n        ", ...evidenceLines);
+}
+
+// Appends a tool result to the evidence list, skipping results already recorded.
+// A tool call and its result appear both as an iteration output and in later
+// iterations' history, so the same result is seen more than once per run.
+isolated function addEvidenceLine(string[] evidenceLines, map<()> seenLines,
+        ai:ChatFunctionMessage toolMessage) {
+    string evidenceLine = string `- tool "${toolMessage.name}" returned: ${toolMessage.content ?: "(no content)"}`;
+    if seenLines.hasKey(evidenceLine) {
+        return;
+    }
+    seenLines[evidenceLine] = ();
+    evidenceLines.push(evidenceLine);
 }
 
 // Lists the errors that occurred during the run; empty string when there were none.
