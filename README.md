@@ -57,7 +57,7 @@ Execute the commands below to build from source.
 3. To run a group of tests:
 
 ```bash
-./gradlew clean test -Pgroups=<test_group_names>
+./gradlew clean test -Pgroups="<test_group_names>"
 ```
 
 4. To build the package without the tests:
@@ -69,13 +69,13 @@ Execute the commands below to build from source.
 5. To debug the tests:
 
 ```bash
-./gradlew clean test -Pdebug=<port>
+./gradlew clean test -Pdebug="<port>"
 ```
 
 6. To debug with Ballerina language:
 
 ```bash
-./gradlew clean build -PbalJavaDebug=<port>
+./gradlew clean build -PbalJavaDebug="<port>"
 ```
 
 7. Publish the generated artifacts to the local Ballerina central repository:
