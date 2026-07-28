@@ -1,0 +1,12 @@
+[package]
+org = "ballerina"
+name = "ai.eval"
+version = "@toml.version@"
+authors = ["Ballerina"]
+keywords = ["ai", "evaluation", "llm-as-a-judge", "agent"]
+repository = "https://github.com/ballerina-platform/module-ballerina-ai.eval"
+license = ["Apache-2.0"]
+distribution = "2201.13.4"
+
+[platform.java21]
+graalvmCompatible = true
