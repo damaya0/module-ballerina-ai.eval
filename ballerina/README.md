@@ -1,8 +1,17 @@
 # Overview
 
 This module provides evaluation templates for AI agents built with the `ballerina/ai` module. Each
-template runs the agent and returns `()` on success or an `error` describing the first failure, so
+template runs the agent and reports the outcome through the `ballerina/test` assertion functions, so
 evaluations run as ordinary Ballerina test functions.
+
+A template distinguishes two kinds of outcome:
+
+- A **verdict on the agent** — a response that breaches a rule, or a judge score below the
+  threshold — fails the test through an assertion. The test report records the message against the
+  failing entry, and `minPassRate` counts it as one failed entry rather than aborting the run.
+- A **failure to evaluate** — the agent run failed, the judge could not be reached, or the template
+  was misconfigured — is returned as an `Error`. These are not verdicts on the agent, so keeping
+  them separate stops a broken model provider from reading as poor agent quality.
 
 There are two families:
 
@@ -136,8 +145,9 @@ function agentFollowsToolTrajectory(ai:ConversationThread thread) returns error?
 }
 ```
 
-Templates return an `error` rather than a score, so each thread passes or fails as a whole, and the
-test above passes only when every thread passes.
+Templates assert a verdict rather than returning a score, so each thread passes or fails as a whole,
+and the test above passes only when every thread passes. The `check` handles the `Error` case, where
+the evaluation could not be run at all.
 
 ### Allowing a proportion of threads to fail
 

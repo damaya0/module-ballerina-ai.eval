@@ -200,7 +200,10 @@ function lengthWithinBoundsPasses() returns error? {
     groups: ["rule-based"]
 }
 function lengthOutsideBoundsFails() {
-    error? evalResult = assertLengthCompliance(targetAgent = mockAgent("This response is far too long."),
+    // A length breach is a verdict on the agent, raised through `test:assertTrue`, so
+    // it reaches the caller as a panic. `trap` captures it to inspect the message.
+    error? evalResult = trap assertLengthCompliance(
+            targetAgent = mockAgent("This response is far too long."),
             queries = "what is 1 + 1", minLength = 1, maxLength = 5);
     if evalResult is () {
         test:assertFail("expected the evaluation to fail when the response exceeds maxLength");
@@ -247,10 +250,27 @@ function belowThresholdIsAnAssertionNotAnError() {
 @test:Config {
     groups: ["error-type"]
 }
-function ruleBasedFailureIsModuleError() {
-    error? evalResult = assertLengthCompliance(targetAgent = mockAgent("This response is far too long."),
+function ruleBasedVerdictIsAnAssertionNotAnError() {
+    // The mirror of `belowThresholdIsAnAssertionNotAnError` for the rule-based side: a
+    // verdict on the agent must be an assertion failure so the report records it per
+    // entry, not an `Error` which would read as the evaluation itself breaking.
+    error? evalResult = trap assertLengthCompliance(
+            targetAgent = mockAgent("This response is far too long."),
             queries = "what is 1 + 1", minLength = 1, maxLength = 5);
-    test:assertTrue(evalResult is Error, "rule-based failure should be an ai.eval:Error");
+    test:assertTrue(evalResult is error, "expected the length breach to fail the evaluation");
+    test:assertFalse(evalResult is Error,
+            "a rule-based verdict should be an assertion failure, not an ai.eval:Error");
+}
+
+// Infrastructure and configuration failures on the rule-based side still surface as
+// this module's `Error`, so they stay distinguishable from agent verdicts.
+@test:Config {
+    groups: ["rule-based", "error-type"]
+}
+function ruleBasedConfigFailureIsModuleError() {
+    error? evalResult = assertContentCoverage(targetAgent = mockAgent("The answer is 2."),
+            queries = "what is 1 + 1", requiredStrings = []);
+    test:assertTrue(evalResult is Error, "an empty required-string list should be an ai.eval:Error");
 }
 
 // Configuration errors raised before the agent runs carry the same type.

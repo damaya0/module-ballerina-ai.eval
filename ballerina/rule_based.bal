@@ -15,6 +15,7 @@
 // under the License.
 
 import ballerina/ai;
+import ballerina/test;
 import ballerina/time;
 import ballerina/uuid;
 
@@ -26,7 +27,7 @@ import ballerina/uuid;
 # + queries - The eval set conversation thread, or a single user query
 # + minLength - The minimum accepted response length (inclusive)
 # + maxLength - The maximum accepted response length (inclusive)
-# + return - `()` if every checked response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Length Compliance",
     description: "Checks that agent response lengths stay within the configured bounds",
@@ -38,14 +39,15 @@ public isolated function assertLengthCompliance(ai:Agent targetAgent, ai:Convers
     if queries is string {
         string actualResponse = check getAgentResponse(targetAgent = targetAgent, userQuery = queries,
                 sessionId = uuid:createType4AsString());
-        return checkLength(userQuery = queries, actualResponse = actualResponse,
+        checkLength(userQuery = queries, actualResponse = actualResponse,
                 minLength = minLength, maxLength = maxLength);
+        return;
     }
     foreach ai:Trace expectedTrace in queries.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
         string actualResponse = check getAgentResponse(targetAgent = targetAgent, userQuery = userQuery,
                 sessionId = queries.id);
-        check checkLength(userQuery = userQuery, actualResponse = actualResponse,
+        checkLength(userQuery = userQuery, actualResponse = actualResponse,
                 minLength = minLength, maxLength = maxLength);
     }
 }
@@ -70,7 +72,7 @@ public enum TrajectoryMatchMode {
 # + targetAgent - The agent under evaluation
 # + thread - The conversation thread loaded from an eval set
 # + matchMode - The trajectory matching strategy to apply
-# + return - `()` if every trace passes, or an error describing the first mismatch
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Tool Trajectory",
     description: "Checks the agent's tool calls against the eval set trajectory using a configurable matching mode",
@@ -84,12 +86,11 @@ public isolated function evaluateToolTrajectory(ai:Agent targetAgent, ai:Convers
         ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery, sessionId = thread.id);
         ai:FunctionCall[] expectedToolCalls = expectedTrace.toolCalls ?: [];
         ai:FunctionCall[] actualToolCalls = actualTrace.toolCalls ?: [];
-        if !matchTrajectory(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls,
-                matchMode = matchMode) {
-            return error(string `[tool-trajectory] query "${userQuery}": tool calls do not satisfy ` +
-                    string `${matchMode} matching; expected ${describeToolCalls(toolCalls = expectedToolCalls)} ` +
-                    string `but got ${describeToolCalls(toolCalls = actualToolCalls)}`);
-        }
+        test:assertTrue(matchTrajectory(expectedToolCalls = expectedToolCalls,
+                        actualToolCalls = actualToolCalls, matchMode = matchMode),
+                string `[tool-trajectory] query "${userQuery}": tool calls do not satisfy ` +
+                string `${matchMode} matching; expected ${describeToolCalls(toolCalls = expectedToolCalls)} ` +
+                string `but got ${describeToolCalls(toolCalls = actualToolCalls)}`);
     }
 }
 
@@ -102,7 +103,7 @@ public isolated function evaluateToolTrajectory(ai:Agent targetAgent, ai:Convers
 # + caseSensitive - Whether the comparison is case-sensitive. When `false`, only ASCII
 # A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + stripWhitespace - Whether to strip leading/trailing whitespace before comparing
-# + return - `()` if every trace matches, or an error describing the first mismatch
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Exact Match",
     description: "Checks that each agent response exactly matches the expected response in the eval set",
@@ -123,15 +124,12 @@ public isolated function assertExactMatch(ai:Agent targetAgent, ai:ConversationT
             expectedResponse = expectedResponse.toLowerAscii();
             actualResponse = actualResponse.toLowerAscii();
         }
-        if actualResponse != expectedResponse {
-            int mismatchIndex = findFirstMismatch(expectedResponse = expectedResponse,
-                    actualResponse = actualResponse);
-            return error(string `[exact-match] query "${userQuery}": responses differ at character ` +
-                    string `index ${mismatchIndex} (expected lengths ${expectedResponse.length()}, ` +
-                    string `actual ${actualResponse.length()}); expected ` +
-                    string `"…${excerptAround(text = expectedResponse, mismatchIndex = mismatchIndex)}…" ` +
-                    string `but got "…${excerptAround(text = actualResponse, mismatchIndex = mismatchIndex)}…"`);
-        }
+        // `assertEquals` renders the expected and actual values itself, so the two
+        // differ visibly in the report without this module excerpting around the
+        // first differing character.
+        test:assertEquals(actualResponse, expectedResponse,
+                string `[exact-match] query "${userQuery}": the agent response does not match the ` +
+                string `expected response recorded in the eval set`);
     }
 }
 
@@ -144,7 +142,7 @@ public isolated function assertExactMatch(ai:Agent targetAgent, ai:ConversationT
 # + prohibitedStrings - The strings that must not appear in any agent response
 # + caseSensitive - Whether the matching is case-sensitive. When `false`, only ASCII
 # A–Z is folded, so non-ASCII letters still compare case-sensitively
-# + return - `()` if no prohibited content is found, or an error describing the first violation
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Content Safety",
     description: "Checks that agent responses contain none of the configured prohibited strings",
@@ -159,14 +157,15 @@ public isolated function assertContentSafety(ai:Agent targetAgent, ai:Conversati
     if queries is string {
         string actualResponse = check getAgentResponse(targetAgent = targetAgent, userQuery = queries,
                 sessionId = uuid:createType4AsString());
-        return checkProhibitedContent(userQuery = queries, actualResponse = actualResponse,
+        checkProhibitedContent(userQuery = queries, actualResponse = actualResponse,
                 prohibitedStrings = prohibitedStrings, caseSensitive = caseSensitive);
+        return;
     }
     foreach ai:Trace expectedTrace in queries.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
         string actualResponse = check getAgentResponse(targetAgent = targetAgent, userQuery = userQuery,
                 sessionId = queries.id);
-        check checkProhibitedContent(userQuery = userQuery, actualResponse = actualResponse,
+        checkProhibitedContent(userQuery = userQuery, actualResponse = actualResponse,
                 prohibitedStrings = prohibitedStrings, caseSensitive = caseSensitive);
     }
 }
@@ -178,7 +177,7 @@ public isolated function assertContentSafety(ai:Agent targetAgent, ai:Conversati
 # + thread - The conversation thread loaded from an eval set
 # + caseSensitive - Whether the substring matching is case-sensitive. When `false`, only
 # ASCII A–Z is folded, so non-ASCII letters still compare case-sensitively
-# + return - `()` if every trace passes, or an error describing the first miss
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Contains Match",
     description: "Checks that the expected response from the eval set appears as a substring of the agent response",
@@ -195,11 +194,10 @@ public isolated function assertContainsMatch(ai:Agent targetAgent, ai:Conversati
                 sessionId = thread.id);
         string compareExpected = caseSensitive ? expectedResponse : expectedResponse.toLowerAscii();
         string compareActual = caseSensitive ? actualResponse : actualResponse.toLowerAscii();
-        if !compareActual.includes(compareExpected) {
-            return error(string `[contains-match] query "${userQuery}": expected response not found ` +
-                    string `in agent response (actual length ${actualResponse.length()}, ` +
-                    string `expected length ${expectedResponse.length()})`);
-        }
+        test:assertTrue(compareActual.includes(compareExpected),
+                string `[contains-match] query "${userQuery}": expected response not found ` +
+                string `in agent response (actual length ${actualResponse.length()}, ` +
+                string `expected length ${expectedResponse.length()})`);
     }
 }
 
@@ -208,7 +206,7 @@ public isolated function assertContainsMatch(ai:Agent targetAgent, ai:Conversati
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
 # + maxIterations - The maximum number of iterations allowed per agent run
-# + return - `()` if every run stays within the limit, or an error describing the first excess
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Iteration Efficiency",
     description: "Checks that the agent completes each run within the configured iteration limit",
@@ -220,13 +218,14 @@ public isolated function assertIterationEfficiency(ai:Agent targetAgent, ai:Conv
     if queries is string {
         ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = queries,
                 sessionId = uuid:createType4AsString());
-        return checkIterationCount(userQuery = queries, actualTrace = actualTrace,
+        checkIterationCount(userQuery = queries, actualTrace = actualTrace,
                 maxIterations = maxIterations);
+        return;
     }
     foreach ai:Trace expectedTrace in queries.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
         ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery, sessionId = queries.id);
-        check checkIterationCount(userQuery = userQuery, actualTrace = actualTrace,
+        checkIterationCount(userQuery = userQuery, actualTrace = actualTrace,
                 maxIterations = maxIterations);
     }
 }
@@ -241,7 +240,7 @@ public isolated function assertIterationEfficiency(ai:Agent targetAgent, ai:Conv
 # + requiredStrings - The strings that must all appear in the agent output
 # + caseSensitive - Whether the matching is case-sensitive. When `false`, only ASCII
 # A–Z is folded, so non-ASCII letters still compare case-sensitively
-# + return - `()` if every required string is found, or an error listing the missing ones
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Content Coverage",
     description: "Checks that all required strings appear in the agent output",
@@ -275,11 +274,10 @@ public isolated function assertContentCoverage(ai:Agent targetAgent, ai:Conversa
             missingStrings.push(requiredString);
         }
     }
-    if missingStrings.length() > 0 {
-        return error(string `[content-coverage] ${missingStrings.length()}/${requiredStrings.length()} ` +
-                string `required string(s) missing from the agent output: ` +
-                string `"${string:'join("\", \"", ...missingStrings)}"`);
-    }
+    test:assertTrue(missingStrings.length() == 0,
+            string `[content-coverage] ${missingStrings.length()}/${requiredStrings.length()} ` +
+            string `required string(s) missing from the agent output: ` +
+            string `"${string:'join("\", \"", ...missingStrings)}"`);
 }
 
 # Checks that the agent produces every response within the given time limit.
@@ -287,7 +285,7 @@ public isolated function assertContentCoverage(ai:Agent targetAgent, ai:Conversa
 # + targetAgent - The agent under evaluation
 # + queries - The eval set conversation thread, or a single user query
 # + maxLatencySeconds - The maximum time allowed per agent run, in seconds
-# + return - `()` if every run finishes within the limit, or an error describing the first excess
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Latency Performance",
     description: "Checks that the agent responds within the configured time limit",
@@ -299,13 +297,14 @@ public isolated function assertLatencyPerformance(ai:Agent targetAgent, ai:Conve
     if queries is string {
         ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = queries,
                 sessionId = uuid:createType4AsString());
-        return checkLatency(userQuery = queries, actualTrace = actualTrace,
+        checkLatency(userQuery = queries, actualTrace = actualTrace,
                 maxLatencySeconds = maxLatencySeconds);
+        return;
     }
     foreach ai:Trace expectedTrace in queries.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
         ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery, sessionId = queries.id);
-        check checkLatency(userQuery = userQuery, actualTrace = actualTrace,
+        checkLatency(userQuery = userQuery, actualTrace = actualTrace,
                 maxLatencySeconds = maxLatencySeconds);
     }
 }
@@ -345,17 +344,21 @@ isolated function getResponseText(ai:Trace trace) returns string|Error {
     return output.content ?: "";
 }
 
-isolated function checkLength(string userQuery, string actualResponse, int minLength, int maxLength)
-        returns Error? {
+// Each check below reports a verdict on the agent, so it is raised through a
+// `test:assert*` function rather than returned. That records the message verbatim
+// against the failing entry in the test report and lets `minPassRate` aggregate it
+// across an eval set. Configuration and infrastructure failures stay as `Error`,
+// because they are not verdicts on the agent.
+
+isolated function checkLength(string userQuery, string actualResponse, int minLength, int maxLength) {
     int responseLength = actualResponse.length();
-    if responseLength < minLength || responseLength > maxLength {
-        return error(string `[length-compliance] query "${userQuery}": response length ` +
-                string `${responseLength} is outside the range [${minLength}, ${maxLength}]`);
-    }
+    test:assertTrue(responseLength >= minLength && responseLength <= maxLength,
+            string `[length-compliance] query "${userQuery}": response length ` +
+            string `${responseLength} is outside the range [${minLength}, ${maxLength}]`);
 }
 
 isolated function checkProhibitedContent(string userQuery, string actualResponse, string[] prohibitedStrings,
-        boolean caseSensitive) returns Error? {
+        boolean caseSensitive) {
     string compareResponse = caseSensitive ? actualResponse : actualResponse.toLowerAscii();
     string[] foundStrings = [];
     foreach string prohibitedString in prohibitedStrings {
@@ -364,45 +367,24 @@ isolated function checkProhibitedContent(string userQuery, string actualResponse
             foundStrings.push(prohibitedString);
         }
     }
-    if foundStrings.length() > 0 {
-        return error(string `[content-safety] query "${userQuery}": response contains ` +
-                string `${foundStrings.length()} prohibited string(s): ` +
-                string `"${string:'join("\", \"", ...foundStrings)}"`);
-    }
+    test:assertTrue(foundStrings.length() == 0,
+            string `[content-safety] query "${userQuery}": response contains ` +
+            string `${foundStrings.length()} prohibited string(s): ` +
+            string `"${string:'join("\", \"", ...foundStrings)}"`);
 }
 
-isolated function checkLatency(string userQuery, ai:Trace actualTrace, decimal maxLatencySeconds)
-        returns Error? {
+isolated function checkLatency(string userQuery, ai:Trace actualTrace, decimal maxLatencySeconds) {
     decimal actualLatencySeconds = time:utcDiffSeconds(actualTrace.endTime, actualTrace.startTime);
-    if actualLatencySeconds > maxLatencySeconds {
-        return error(string `[latency-performance] query "${userQuery}": agent responded in ` +
-                string `${actualLatencySeconds}s, exceeding the limit of ${maxLatencySeconds}s`);
-    }
+    test:assertTrue(actualLatencySeconds <= maxLatencySeconds,
+            string `[latency-performance] query "${userQuery}": agent responded in ` +
+            string `${actualLatencySeconds}s, exceeding the limit of ${maxLatencySeconds}s`);
 }
 
-isolated function checkIterationCount(string userQuery, ai:Trace actualTrace, int maxIterations)
-        returns Error? {
+isolated function checkIterationCount(string userQuery, ai:Trace actualTrace, int maxIterations) {
     int actualIterations = actualTrace.iterations.length();
-    if actualIterations > maxIterations {
-        return error(string `[iteration-efficiency] query "${userQuery}": agent used ` +
-                string `${actualIterations} iterations, exceeding the limit of ${maxIterations}`);
-    }
-}
-
-isolated function findFirstMismatch(string expectedResponse, string actualResponse) returns int {
-    int comparableLength = int:min(expectedResponse.length(), actualResponse.length());
-    foreach int charIndex in 0 ..< comparableLength {
-        if expectedResponse[charIndex] != actualResponse[charIndex] {
-            return charIndex;
-        }
-    }
-    return comparableLength;
-}
-
-isolated function excerptAround(string text, int mismatchIndex) returns string {
-    int windowStart = int:max(0, mismatchIndex - 20);
-    int windowEnd = int:min(text.length(), mismatchIndex + 20);
-    return text.substring(windowStart, windowEnd);
+    test:assertTrue(actualIterations <= maxIterations,
+            string `[iteration-efficiency] query "${userQuery}": agent used ` +
+            string `${actualIterations} iterations, exceeding the limit of ${maxIterations}`);
 }
 
 isolated function matchTrajectory(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls,

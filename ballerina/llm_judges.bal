@@ -147,7 +147,7 @@ isolated function runTraceJudge(ai:Agent targetAgent, ai:ConversationThread|stri
 # + thread - The conversation thread loaded from an eval set
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every trace passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Semantic Similarity",
     description: "Uses an LLM judge to compare each agent response against the expected response in the eval set",
@@ -206,7 +206,7 @@ public isolated function evaluateSemanticSimilarity(ai:Agent targetAgent, ai:Con
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Output Accuracy",
     description: "Uses an LLM judge to check the factual correctness of agent responses",
@@ -259,7 +259,7 @@ public isolated function evaluateOutputAccuracy(ai:Agent targetAgent, ai:Convers
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
 # + successCriteria - Optional additional success criteria given to the judge
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Helpfulness",
     description: "Uses an LLM judge to check whether the agent response actually helps the user",
@@ -311,7 +311,7 @@ public isolated function evaluateHelpfulness(ai:Agent targetAgent, ai:Conversati
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Clarity",
     description: "Uses an LLM judge to check readability, structure, and absence of ambiguity in agent responses",
@@ -362,7 +362,7 @@ public isolated function evaluateClarity(ai:Agent targetAgent, ai:ConversationTh
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
 # + expectedCoverage - Optional description of what the response is expected to cover
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Completeness",
     description: "Uses an LLM judge to check whether the agent response addresses every part of the query",
@@ -410,7 +410,7 @@ public isolated function evaluateCompleteness(ai:Agent targetAgent, ai:Conversat
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Relevance",
     description: "Uses an LLM judge to check whether the agent response stays on the query's topic and intent",
@@ -459,7 +459,7 @@ public isolated function evaluateRelevance(ai:Agent targetAgent, ai:Conversation
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Coherence",
     description: "Uses an LLM judge to check logical flow and internal consistency of agent responses",
@@ -506,7 +506,7 @@ public isolated function evaluateCoherence(ai:Agent targetAgent, ai:Conversation
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Conciseness",
     description: "Uses an LLM judge to check agent responses for unnecessary verbosity and filler",
@@ -556,7 +556,7 @@ public isolated function evaluateConciseness(ai:Agent targetAgent, ai:Conversati
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
 # + safetyContext - Optional context about the interaction type (e.g. "children's education")
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Safety",
     description: "Uses an LLM judge to check agent responses for harmful, toxic, biased, or policy-violating content",
@@ -611,7 +611,7 @@ public isolated function evaluateSafety(ai:Agent targetAgent, ai:ConversationThr
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
 # + toneContext - Optional context about the expected tone (e.g. "customer support")
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Tone",
     description: "Uses an LLM judge to check agent responses for appropriate and professional tone",
@@ -663,7 +663,7 @@ public isolated function evaluateTone(ai:Agent targetAgent, ai:ConversationThrea
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged response passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Groundedness",
     description: "Uses an LLM judge to check that agent response claims are grounded in tool evidence",
@@ -720,7 +720,7 @@ public isolated function evaluateGroundedness(ai:Agent targetAgent, ai:Conversat
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged run passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Reasoning Quality",
     description: "Uses an LLM judge to check whether the agent's execution steps are logical and purposeful",
@@ -772,7 +772,7 @@ public isolated function evaluateReasoningQuality(ai:Agent targetAgent, ai:Conve
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged run passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Path Efficiency",
     description: "Uses an LLM judge to detect redundant steps, loops, and wasted work in agent runs",
@@ -823,7 +823,7 @@ public isolated function evaluatePathEfficiency(ai:Agent targetAgent, ai:Convers
 # + queries - The eval set conversation thread, or a single user query
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
-# + return - `()` if every judged run passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Error Recovery",
     description: "Uses an LLM judge to check how gracefully the agent recovers from errors during execution",
@@ -880,7 +880,7 @@ public isolated function evaluateErrorRecovery(ai:Agent targetAgent, ai:Conversa
 # + judgeModel - The model provider used as the LLM judge
 # + judgeScoreThreshold - The minimum judge score (in [0.0, 1.0]) required to pass
 # + successCriteria - Optional description of what is expected from the agent
-# + return - `()` if every judged run passes, or an error describing the first failure
+# + return - `()` if the evaluation ran, or an `Error` if it could not; failing verdicts are raised as assertions
 @EvalTemplate {
     label: "Instruction Following",
     description: "Uses an LLM judge to check whether the agent follows system prompt constraints and user instructions",
