@@ -77,7 +77,10 @@ function judgeAtExactThresholdPasses() returns error? {
     groups: ["llm-judge"]
 }
 function judgeBelowThresholdFails() {
-    error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("Some unhelpful text."),
+    // A below-threshold score is a verdict on the agent, raised through `test:assertTrue`,
+    // so it reaches the caller as a panic rather than a returned value. `trap` captures it
+    // so the message can be inspected.
+    error? evalResult = trap evaluateHelpfulness(targetAgent = mockAgent("Some unhelpful text."),
             queries = "what is 1 + 1", judgeModel = mockJudge(0.25, "mock: does not help the user"),
             judgeScoreThreshold = 0.75);
     if evalResult is () {
@@ -217,10 +220,27 @@ function lengthOutsideBoundsFails() {
     groups: ["error-type"]
 }
 function judgeFailureIsModuleError() {
-    error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("Some unhelpful text."),
+    // A malformed verdict is a judge malfunction rather than a verdict on the agent, so
+    // it is returned as this module's `Error` and not raised as an assertion failure.
+    error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
+            queries = "what is 1 + 1", judgeModel = mockJudge(1.5, "mock: inflated score"),
+            judgeScoreThreshold = 0.75);
+    test:assertTrue(evalResult is Error, "a malformed judge verdict should be an ai.eval:Error");
+}
+
+// A below-threshold score is a verdict on the agent, so it must surface as a test
+// assertion failure rather than a returned `Error`. This is what lets the test report
+// record it per entry and lets `minPassRate` aggregate it across an eval set.
+@test:Config {
+    groups: ["llm-judge", "error-type"]
+}
+function belowThresholdIsAnAssertionNotAnError() {
+    error? returned = trap evaluateHelpfulness(targetAgent = mockAgent("Some unhelpful text."),
             queries = "what is 1 + 1", judgeModel = mockJudge(0.25, "mock: does not help"),
             judgeScoreThreshold = 0.75);
-    test:assertTrue(evalResult is Error, "judge failure should be an ai.eval:Error");
+    test:assertTrue(returned is error, "expected the below-threshold verdict to fail the evaluation");
+    test:assertFalse(returned is Error,
+            "a below-threshold verdict should be an assertion failure, not an ai.eval:Error");
 }
 
 // The same holds for rule-based templates.

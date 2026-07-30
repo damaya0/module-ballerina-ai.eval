@@ -15,6 +15,7 @@
 // under the License.
 
 import ballerina/ai;
+import ballerina/test;
 import ballerina/uuid;
 
 // LLM-as-judge evaluators. Each scores the agent's actual run and accepts either an
@@ -73,23 +74,29 @@ isolated function validateThreshold(string metricName, float judgeScoreThreshold
     }
 }
 
+// Reports the judge's verdict.
+//
+// A score outside the valid range means the judge itself misbehaved, which is not a
+// verdict on the agent, so it is returned as an `Error`. A judge coerced into
+// returning an inflated score is the payoff an injection attempt aims for, so this is
+// the backstop for the fencing in `asUntrustedData`.
+//
+// A score below the threshold is a genuine verdict on the agent, so it is raised
+// through `test:assertTrue`. That records it as one failed entry in the test report
+// with the message intact, and lets `minPassRate` aggregate across an eval set; a
+// returned error would instead be wrapped in `error("...")` with a stack trace.
 isolated function checkScore(string metricName, string userQuery,
         JudgeVerdict judgeVerdict, float passingScore) returns Error? {
     float evalScore = judgeVerdict.evalScore;
-    // A score outside the range means the judge itself misbehaved, which is a
-    // different failure from the agent scoring below the threshold. A judge coerced
-    // into returning an inflated score is the payoff an injection attempt aims for,
-    // so this is the backstop for the fencing in `asUntrustedData`.
     if evalScore < MIN_SCORE || evalScore > MAX_SCORE {
         return error(string `[${metricName}] query "${userQuery}": judge returned score ${evalScore}, ` +
                 string `outside the valid range [${MIN_SCORE}, ${MAX_SCORE}]. ` +
                 string `Judge reasoning: ${judgeVerdict.judgeReasoning}`);
     }
-    if evalScore < passingScore {
-        return error(string `[${metricName}] query "${userQuery}": judge score ${evalScore} is below ` +
-                string `the passing score ${passingScore}. ` +
-                string `Judge reasoning: ${judgeVerdict.judgeReasoning}`);
-    }
+    test:assertTrue(evalScore >= passingScore,
+            string `[${metricName}] query "${userQuery}": judge score ${evalScore} is below ` +
+            string `the passing score ${passingScore}. ` +
+            string `Judge reasoning: ${judgeVerdict.judgeReasoning}`);
 }
 
 # The signature every per-metric judge implements: scores one agent run.
