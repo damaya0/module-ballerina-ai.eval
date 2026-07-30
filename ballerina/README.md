@@ -123,13 +123,31 @@ function agentIsHelpful() returns error? {
 }
 ```
 
-Evaluating an eval set, one test run per conversation thread, requiring 80% of threads to pass:
+Evaluating an eval set, one test run per conversation thread:
 
 ```ballerina
 isolated function loadEvalSet() returns map<[ai:ConversationThread]>|error {
     return ai:loadConversationThreads("tests/resources/evalsets/sample.evalset.json");
 }
 
+@test:Config {
+    dataProvider: loadEvalSet
+}
+function agentFollowsToolTrajectory(ai:ConversationThread thread) returns error? {
+    check eval:evaluateToolTrajectory(targetAgent = agentUnderTest, thread = thread,
+            matchMode = eval:STRICT);
+}
+```
+
+Templates return an `error` rather than a score, so each thread passes or fails as a whole, and the
+test above passes only when every thread passes.
+
+### Allowing a proportion of threads to fail
+
+Agent behaviour varies between runs, so requiring every thread to pass is often too strict. The
+`minPassRate` field on `@test:Config` sets the proportion that must pass:
+
+```ballerina
 @test:Config {
     dataProvider: loadEvalSet,
     minPassRate: 0.8
@@ -140,5 +158,5 @@ function agentFollowsToolTrajectory(ai:ConversationThread thread) returns error?
 }
 ```
 
-Templates return an `error` rather than a score, so a thread passes or fails as a whole. Use
-`minPassRate` for a proportional signal across threads or queries.
+`minPassRate` was introduced in Ballerina **2201.13.2**. This package supports 2201.12.0 and above,
+so on distributions older than 2201.13.2 omit the field and every thread must pass.
