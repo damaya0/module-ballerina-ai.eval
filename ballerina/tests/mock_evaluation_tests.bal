@@ -91,6 +91,95 @@ function judgeBelowThresholdFails() {
             "judge reasoning missing from failure");
 }
 
+// ***** Score and threshold range validation *****
+
+// A judge score above 1.0 is rejected rather than treated as a pass. Without this
+// check an inflated score sails through, since 1.5 >= any valid threshold — which is
+// exactly the payoff a prompt-injection attempt aims for.
+@test:Config {
+    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+}
+function judgeScoreAboveRangeIsRejected() {
+    error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
+            queries = "what is 1 + 1", judgeModel = mockJudge(1.5, "mock: inflated score"),
+            judgeScoreThreshold = 0.8);
+    if evalResult is () {
+        test:assertFail("expected an out-of-range judge score to be rejected, not accepted as a pass");
+    }
+    string failureMessage = evalResult.message();
+    test:assertTrue(failureMessage.includes("outside the valid range"),
+            "failure should identify the score as out of range");
+    test:assertTrue(failureMessage.includes("1.5"), "offending score missing from failure");
+}
+
+// A negative judge score is reported as out of range, not as an ordinary
+// below-threshold failure, so a misbehaving judge is distinguishable from a
+// genuinely poor agent response.
+@test:Config {
+    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+}
+function judgeScoreBelowRangeIsRejected() {
+    error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
+            queries = "what is 1 + 1", judgeModel = mockJudge(-1.0, "mock: negative score"),
+            judgeScoreThreshold = 0.8);
+    if evalResult is () {
+        test:assertFail("expected a negative judge score to be rejected");
+    }
+    string failureMessage = evalResult.message();
+    test:assertTrue(failureMessage.includes("outside the valid range"),
+            "failure should identify the score as out of range");
+    test:assertFalse(failureMessage.includes("is below the passing score"),
+            "a malformed judge score should not be reported as a below-threshold failure");
+}
+
+// A threshold above 1.0 is caller configuration error, reported before the agent
+// runs. The judge here would otherwise return a passing-looking score.
+@test:Config {
+    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+}
+function thresholdAboveRangeIsRejected() {
+    error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
+            queries = "what is 1 + 1", judgeModel = mockJudge(0.9, "mock: helpful"),
+            judgeScoreThreshold = 1.5);
+    if evalResult is () {
+        test:assertFail("expected an out-of-range threshold to be rejected");
+    }
+    string failureMessage = evalResult.message();
+    test:assertTrue(failureMessage.includes("judgeScoreThreshold"),
+            "failure should name the offending parameter");
+    test:assertTrue(failureMessage.includes("outside the valid range"),
+            "failure should identify the threshold as out of range");
+    test:assertFalse(failureMessage.includes("is below the passing score"),
+            "an invalid threshold should be reported as configuration, not as a score failure");
+}
+
+// A negative threshold is rejected the same way.
+@test:Config {
+    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+}
+function thresholdBelowRangeIsRejected() {
+    error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
+            queries = "what is 1 + 1", judgeModel = mockJudge(0.9, "mock: helpful"),
+            judgeScoreThreshold = -0.5);
+    if evalResult is () {
+        test:assertFail("expected a negative threshold to be rejected");
+    }
+    test:assertTrue(evalResult.message().includes("judgeScoreThreshold"),
+            "failure should name the offending parameter");
+}
+
+// The range bounds themselves stay valid: 0.0 and 1.0 are accepted for both the
+// threshold and the judge score.
+@test:Config {
+    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+}
+function rangeBoundsAreAccepted() returns error? {
+    check evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."), queries = "what is 1 + 1",
+            judgeModel = mockJudge(0.0, "mock: lowest valid score"), judgeScoreThreshold = 0.0);
+    check evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."), queries = "what is 1 + 1",
+            judgeModel = mockJudge(1.0, "mock: highest valid score"), judgeScoreThreshold = 1.0);
+}
+
 // ***** Rule-based scenarios *****
 
 // A response length inside the configured bounds passes.

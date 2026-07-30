@@ -50,6 +50,10 @@ case-sensitively.
 All judges take a `judgeModel` and a `judgeScoreThreshold` (default `0.8`). A score below the
 threshold fails, and the error carries the metric, the query, the score, and the judge's reasoning.
 
+Both the threshold and the judge's score must fall within `[0.0, 1.0]`. A threshold outside that
+range is rejected before the agent runs, and a score outside it is reported as a malformed verdict
+rather than as a pass or a below-threshold failure.
+
 | Function | Needs eval set | Judges |
 | -------- | -------------- | ------ |
 | `evaluateOutputAccuracy` | No | Factual correctness of the response |

@@ -60,10 +60,30 @@ ${sanitized}
 ${FENCE_CLOSE}`;
 }
 
+// Judge scores and thresholds are both defined on this inclusive range.
+const float MIN_SCORE = 0.0;
+const float MAX_SCORE = 1.0;
+
+// Validates a caller-supplied threshold. Called before the agent runs, so a bad
+// threshold is reported immediately rather than after an agent run and an LLM call.
+isolated function validateThreshold(string metricName, float judgeScoreThreshold) returns error? {
+    if judgeScoreThreshold < MIN_SCORE || judgeScoreThreshold > MAX_SCORE {
+        return error(string `[${metricName}] judgeScoreThreshold ${judgeScoreThreshold} is outside the valid range [${MIN_SCORE}, ${MAX_SCORE}]`);
+    }
+}
+
 isolated function checkScore(string metricName, string userQuery,
         JudgeVerdict judgeVerdict, float passingScore) returns error? {
-    if judgeVerdict.evalScore < passingScore {
-        return error(string `[${metricName}] query "${userQuery}": judge score ${judgeVerdict.evalScore} is below the passing score ${passingScore}. Judge reasoning: ${judgeVerdict.judgeReasoning}`);
+    float evalScore = judgeVerdict.evalScore;
+    // A score outside the range means the judge itself misbehaved, which is a
+    // different failure from the agent scoring below the threshold. A judge coerced
+    // into returning an inflated score is the payoff an injection attempt aims for,
+    // so this is the backstop for the fencing in `asUntrustedData`.
+    if evalScore < MIN_SCORE || evalScore > MAX_SCORE {
+        return error(string `[${metricName}] query "${userQuery}": judge returned score ${evalScore}, outside the valid range [${MIN_SCORE}, ${MAX_SCORE}]. Judge reasoning: ${judgeVerdict.judgeReasoning}`);
+    }
+    if evalScore < passingScore {
+        return error(string `[${metricName}] query "${userQuery}": judge score ${evalScore} is below the passing score ${passingScore}. Judge reasoning: ${judgeVerdict.judgeReasoning}`);
     }
 }
 
@@ -74,6 +94,7 @@ type TraceJudge isolated function (string userQuery, ai:Trace actualTrace) retur
 // judge to every run, and fails on the first score below the threshold.
 isolated function runTraceJudge(ai:Agent targetAgent, ai:ConversationThread|string queries,
         string metricName, float judgeScoreThreshold, TraceJudge scoreTrace) returns error? {
+    check validateThreshold(metricName = metricName, judgeScoreThreshold = judgeScoreThreshold);
     if queries is string {
         ai:Trace actualTrace = check targetAgent.run(query = queries, sessionId = uuid:createType4AsString());
         JudgeVerdict judgeVerdict = check scoreTrace(queries, actualTrace);
@@ -107,6 +128,7 @@ isolated function runTraceJudge(ai:Agent targetAgent, ai:ConversationThread|stri
 }
 public isolated function evaluateSemanticSimilarity(ai:Agent targetAgent, ai:ConversationThread thread,
         ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+    check validateThreshold(metricName = "semantic-similarity", judgeScoreThreshold = judgeScoreThreshold);
     foreach ai:Trace expectedTrace in thread.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
         ai:ChatAssistantMessage expectedOutput = check expectedTrace.output;
