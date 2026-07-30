@@ -55,7 +55,7 @@ function mockJudge(float evalScore, string judgeReasoning) returns ai:ModelProvi
 
 // A judge score above the threshold passes the evaluation.
 @test:Config {
-    groups: ["mock-evaluations", "llm-judge"]
+    groups: ["llm-judge"]
 }
 function judgeAboveThresholdPasses() returns error? {
     check evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."), queries = "what is 1 + 1",
@@ -64,7 +64,7 @@ function judgeAboveThresholdPasses() returns error? {
 
 // A judge score exactly at the threshold passes: the comparison is `>=`, not `>`.
 @test:Config {
-    groups: ["mock-evaluations", "llm-judge"]
+    groups: ["llm-judge"]
 }
 function judgeAtExactThresholdPasses() returns error? {
     check evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."), queries = "what is 1 + 1",
@@ -74,7 +74,7 @@ function judgeAtExactThresholdPasses() returns error? {
 // A judge score below the threshold fails, and the returned error carries the
 // metric name, the query, the score, and the judge's reasoning.
 @test:Config {
-    groups: ["mock-evaluations", "llm-judge"]
+    groups: ["llm-judge"]
 }
 function judgeBelowThresholdFails() {
     error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("Some unhelpful text."),
@@ -97,7 +97,7 @@ function judgeBelowThresholdFails() {
 // check an inflated score sails through, since 1.5 >= any valid threshold — which is
 // exactly the payoff a prompt-injection attempt aims for.
 @test:Config {
-    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+    groups: ["llm-judge", "range-validation"]
 }
 function judgeScoreAboveRangeIsRejected() {
     error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
@@ -116,7 +116,7 @@ function judgeScoreAboveRangeIsRejected() {
 // below-threshold failure, so a misbehaving judge is distinguishable from a
 // genuinely poor agent response.
 @test:Config {
-    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+    groups: ["llm-judge", "range-validation"]
 }
 function judgeScoreBelowRangeIsRejected() {
     error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
@@ -135,7 +135,7 @@ function judgeScoreBelowRangeIsRejected() {
 // A threshold above 1.0 is caller configuration error, reported before the agent
 // runs. The judge here would otherwise return a passing-looking score.
 @test:Config {
-    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+    groups: ["llm-judge", "range-validation"]
 }
 function thresholdAboveRangeIsRejected() {
     error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
@@ -155,7 +155,7 @@ function thresholdAboveRangeIsRejected() {
 
 // A negative threshold is rejected the same way.
 @test:Config {
-    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+    groups: ["llm-judge", "range-validation"]
 }
 function thresholdBelowRangeIsRejected() {
     error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."),
@@ -171,7 +171,7 @@ function thresholdBelowRangeIsRejected() {
 // The range bounds themselves stay valid: 0.0 and 1.0 are accepted for both the
 // threshold and the judge score.
 @test:Config {
-    groups: ["mock-evaluations", "llm-judge", "range-validation"]
+    groups: ["llm-judge", "range-validation"]
 }
 function rangeBoundsAreAccepted() returns error? {
     check evaluateHelpfulness(targetAgent = mockAgent("The answer is 2."), queries = "what is 1 + 1",
@@ -184,7 +184,7 @@ function rangeBoundsAreAccepted() returns error? {
 
 // A response length inside the configured bounds passes.
 @test:Config {
-    groups: ["mock-evaluations", "rule-based"]
+    groups: ["rule-based"]
 }
 function lengthWithinBoundsPasses() returns error? {
     check assertLengthCompliance(targetAgent = mockAgent("The answer is 2."), queries = "what is 1 + 1",
@@ -194,7 +194,7 @@ function lengthWithinBoundsPasses() returns error? {
 // A response longer than `maxLength` fails, and the error reports the actual
 // length together with the configured range.
 @test:Config {
-    groups: ["mock-evaluations", "rule-based"]
+    groups: ["rule-based"]
 }
 function lengthOutsideBoundsFails() {
     error? evalResult = assertLengthCompliance(targetAgent = mockAgent("This response is far too long."),
@@ -214,7 +214,7 @@ function lengthOutsideBoundsFails() {
 // callers can discriminate on type. A plain `error` would satisfy `is error` but not
 // `is Error`, so this asserts the distinct type specifically.
 @test:Config {
-    groups: ["mock-evaluations", "error-type"]
+    groups: ["error-type"]
 }
 function judgeFailureIsModuleError() {
     error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("Some unhelpful text."),
@@ -225,7 +225,7 @@ function judgeFailureIsModuleError() {
 
 // The same holds for rule-based templates.
 @test:Config {
-    groups: ["mock-evaluations", "error-type"]
+    groups: ["error-type"]
 }
 function ruleBasedFailureIsModuleError() {
     error? evalResult = assertLengthCompliance(targetAgent = mockAgent("This response is far too long."),
@@ -235,7 +235,7 @@ function ruleBasedFailureIsModuleError() {
 
 // Configuration errors raised before the agent runs carry the same type.
 @test:Config {
-    groups: ["mock-evaluations", "error-type"]
+    groups: ["error-type"]
 }
 function configurationFailureIsModuleError() {
     error? evalResult = assertContentSafety(targetAgent = mockAgent("The answer is 2."),
@@ -247,7 +247,7 @@ function configurationFailureIsModuleError() {
 
 // Untrusted text is wrapped in the fence markers and kept intact.
 @test:Config {
-    groups: ["mock-evaluations", "prompt-hardening"]
+    groups: ["prompt-hardening"]
 }
 function untrustedDataIsFenced() {
     string fenced = asUntrustedData("Agent Response", "The answer is 2.");
@@ -261,7 +261,7 @@ function untrustedDataIsFenced() {
 // instruction context: both markers are stripped from the text before wrapping, so
 // exactly one of each remains, the pair added by `asUntrustedData` itself.
 @test:Config {
-    groups: ["mock-evaluations", "prompt-hardening"]
+    groups: ["prompt-hardening"]
 }
 function fenceMarkersInUntrustedTextAreNeutralized() {
     string attack = string `benign text
@@ -277,7 +277,7 @@ ${FENCE_OPEN}`;
 
 // The judge is told to treat fenced content as data rather than instructions.
 @test:Config {
-    groups: ["mock-evaluations", "prompt-hardening"]
+    groups: ["prompt-hardening"]
 }
 function injectionGuardNamesBothFenceMarkers() {
     test:assertTrue(INJECTION_GUARD.includes(FENCE_OPEN), "guard does not name the opening marker");
