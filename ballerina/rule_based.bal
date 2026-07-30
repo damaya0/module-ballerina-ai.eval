@@ -366,50 +366,28 @@ isolated function excerptAround(string text, int mismatchIndex) returns string {
     return text.substring(windowStart, windowEnd);
 }
 
-isolated function matchTrajectory(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls,
-        TrajectoryMatchMode matchMode) returns boolean {
-    match matchMode {
-        STRICT => {
-            return matchStrict(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
-        }
-        UNORDERED => {
-            return matchUnordered(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
-        }
-        SUBSET => {
-            return matchSubset(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
-        }
-        SUPERSET => {
-            return matchSuperset(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
-        }
-    }
-    return false;
-}
-
-// `ai:FunctionCall.arguments` is nilable, so a call recorded with an explicit null
-// and one carrying an empty map describe the same invocation. Normalize both to `{}`
-// before comparing, matching what `describeToolCalls` renders.
-isolated function callsMatch(ai:FunctionCall expectedCall, ai:FunctionCall actualCall) returns boolean =>
-    expectedCall.name == actualCall.name &&
-        (expectedCall.arguments ?: {}) == (actualCall.arguments ?: {});
-
-isolated function matchStrict(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
+isolated function matchSubset(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
         returns boolean {
-    if expectedToolCalls.length() != actualToolCalls.length() {
-        return false;
-    }
-    foreach int callIndex in 0 ..< expectedToolCalls.length() {
-        if !callsMatch(expectedCall = expectedToolCalls[callIndex], actualCall = actualToolCalls[callIndex]) {
+    boolean[] matchedFlags = expectedToolCalls.'map(expectedCall => false);
+    foreach ai:FunctionCall actualCall in actualToolCalls {
+        boolean foundMatch = false;
+        foreach int expectedIndex in 0 ..< expectedToolCalls.length() {
+            if !matchedFlags[expectedIndex]
+                    && callsMatch(expectedCall = expectedToolCalls[expectedIndex], actualCall = actualCall) {
+                matchedFlags[expectedIndex] = true;
+                foundMatch = true;
+                break;
+            }
+        }
+        if !foundMatch {
             return false;
         }
     }
     return true;
 }
 
-isolated function matchUnordered(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
+isolated function matchSuperset(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
         returns boolean {
-    if expectedToolCalls.length() != actualToolCalls.length() {
-        return false;
-    }
     boolean[] matchedFlags = actualToolCalls.'map(actualCall => false);
     foreach ai:FunctionCall expectedCall in expectedToolCalls {
         boolean foundMatch = false;
@@ -422,26 +400,6 @@ isolated function matchUnordered(ai:FunctionCall[] expectedToolCalls, ai:Functio
             }
         }
         if !foundMatch {
-            return false;
-        }
-    }
-    return true;
-}
-
-isolated function matchSubset(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
-        returns boolean {
-    foreach ai:FunctionCall actualCall in actualToolCalls {
-        if !containsCall(toolCalls = expectedToolCalls, targetCall = actualCall) {
-            return false;
-        }
-    }
-    return true;
-}
-
-isolated function matchSuperset(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
-        returns boolean {
-    foreach ai:FunctionCall expectedCall in expectedToolCalls {
-        if !containsCall(toolCalls = actualToolCalls, targetCall = expectedCall) {
             return false;
         }
     }
