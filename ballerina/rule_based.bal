@@ -98,7 +98,7 @@ public isolated function evaluateToolTrajectory(ai:Agent targetAgent, ai:Convers
 # + targetAgent - The agent under evaluation
 # + thread - The conversation thread loaded from an eval set
 # + caseSensitive - Whether the comparison is case-sensitive. When `false`, only ASCII
-#                   A–Z is folded, so non-ASCII letters still compare case-sensitively
+# A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + stripWhitespace - Whether to strip leading/trailing whitespace before comparing
 # + return - `()` if every trace matches, or an error describing the first mismatch
 @EvalTemplate {
@@ -137,7 +137,7 @@ public isolated function assertExactMatch(ai:Agent targetAgent, ai:ConversationT
 # + queries - The eval set conversation thread, or a single user query
 # + prohibitedStrings - The strings that must not appear in any agent response
 # + caseSensitive - Whether the matching is case-sensitive. When `false`, only ASCII
-#                   A–Z is folded, so non-ASCII letters still compare case-sensitively
+# A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + return - `()` if no prohibited content is found, or an error describing the first violation
 @EvalTemplate {
     label: "Content Safety",
@@ -171,7 +171,7 @@ public isolated function assertContentSafety(ai:Agent targetAgent, ai:Conversati
 # + targetAgent - The agent under evaluation
 # + thread - The conversation thread loaded from an eval set
 # + caseSensitive - Whether the substring matching is case-sensitive. When `false`, only
-#                   ASCII A–Z is folded, so non-ASCII letters still compare case-sensitively
+# ASCII A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + return - `()` if every trace passes, or an error describing the first miss
 @EvalTemplate {
     label: "Contains Match",
@@ -231,7 +231,7 @@ public isolated function assertIterationEfficiency(ai:Agent targetAgent, ai:Conv
 # + queries - The eval set conversation thread, or a single user query
 # + requiredStrings - The strings that must all appear in the agent output
 # + caseSensitive - Whether the matching is case-sensitive. When `false`, only ASCII
-#                   A–Z is folded, so non-ASCII letters still compare case-sensitively
+# A–Z is folded, so non-ASCII letters still compare case-sensitively
 # + return - `()` if every required string is found, or an error listing the missing ones
 @EvalTemplate {
     label: "Content Coverage",
@@ -366,6 +366,68 @@ isolated function excerptAround(string text, int mismatchIndex) returns string {
     return text.substring(windowStart, windowEnd);
 }
 
+isolated function matchTrajectory(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls,
+        TrajectoryMatchMode matchMode) returns boolean {
+    match matchMode {
+        STRICT => {
+            return matchStrict(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
+        }
+        UNORDERED => {
+            return matchUnordered(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
+        }
+        SUBSET => {
+            return matchSubset(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
+        }
+        SUPERSET => {
+            return matchSuperset(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls);
+        }
+    }
+    return false;
+}
+
+// `ai:FunctionCall.arguments` is nilable, so a call recorded with an explicit null
+// and one carrying an empty map describe the same invocation. Normalize both to `{}`
+// before comparing, matching what `describeToolCalls` renders.
+isolated function callsMatch(ai:FunctionCall expectedCall, ai:FunctionCall actualCall) returns boolean =>
+    expectedCall.name == actualCall.name &&
+        (expectedCall.arguments ?: {}) == (actualCall.arguments ?: {});
+
+isolated function matchStrict(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
+        returns boolean {
+    if expectedToolCalls.length() != actualToolCalls.length() {
+        return false;
+    }
+    foreach int callIndex in 0 ..< expectedToolCalls.length() {
+        if !callsMatch(expectedCall = expectedToolCalls[callIndex], actualCall = actualToolCalls[callIndex]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+isolated function matchUnordered(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
+        returns boolean {
+    if expectedToolCalls.length() != actualToolCalls.length() {
+        return false;
+    }
+    boolean[] matchedFlags = actualToolCalls.'map(actualCall => false);
+    foreach ai:FunctionCall expectedCall in expectedToolCalls {
+        boolean foundMatch = false;
+        foreach int actualIndex in 0 ..< actualToolCalls.length() {
+            if !matchedFlags[actualIndex]
+                    && callsMatch(expectedCall = expectedCall, actualCall = actualToolCalls[actualIndex]) {
+                matchedFlags[actualIndex] = true;
+                foundMatch = true;
+                break;
+            }
+        }
+        if !foundMatch {
+            return false;
+        }
+    }
+    return true;
+}
+
 isolated function matchSubset(ai:FunctionCall[] expectedToolCalls, ai:FunctionCall[] actualToolCalls)
         returns boolean {
     boolean[] matchedFlags = expectedToolCalls.'map(expectedCall => false);
@@ -404,15 +466,6 @@ isolated function matchSuperset(ai:FunctionCall[] expectedToolCalls, ai:Function
         }
     }
     return true;
-}
-
-isolated function containsCall(ai:FunctionCall[] toolCalls, ai:FunctionCall targetCall) returns boolean {
-    foreach ai:FunctionCall toolCall in toolCalls {
-        if callsMatch(expectedCall = targetCall, actualCall = toolCall) {
-            return true;
-        }
-    }
-    return false;
 }
 
 isolated function describeToolCalls(ai:FunctionCall[] toolCalls) returns string {
