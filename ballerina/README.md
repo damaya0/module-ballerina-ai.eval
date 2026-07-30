@@ -10,9 +10,6 @@ There are two families:
 - **LLM-as-a-judge** — scored by a judge model, which returns a score and its reasoning. The
   evaluation passes when the score reaches the configured threshold.
 
-Every template carries an `@EvalTemplate` annotation giving its label, kind, and whether it needs an
-eval set, for low-code tooling to discover and present them.
-
 ## Inputs
 
 Templates accept one of two inputs:
