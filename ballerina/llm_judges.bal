@@ -66,14 +66,14 @@ const float MAX_SCORE = 1.0;
 
 // Validates a caller-supplied threshold. Called before the agent runs, so a bad
 // threshold is reported immediately rather than after an agent run and an LLM call.
-isolated function validateThreshold(string metricName, float judgeScoreThreshold) returns error? {
+isolated function validateThreshold(string metricName, float judgeScoreThreshold) returns Error? {
     if judgeScoreThreshold < MIN_SCORE || judgeScoreThreshold > MAX_SCORE {
         return error(string `[${metricName}] judgeScoreThreshold ${judgeScoreThreshold} is outside the valid range [${MIN_SCORE}, ${MAX_SCORE}]`);
     }
 }
 
 isolated function checkScore(string metricName, string userQuery,
-        JudgeVerdict judgeVerdict, float passingScore) returns error? {
+        JudgeVerdict judgeVerdict, float passingScore) returns Error? {
     float evalScore = judgeVerdict.evalScore;
     // A score outside the range means the judge itself misbehaved, which is a
     // different failure from the agent scoring below the threshold. A judge coerced
@@ -90,21 +90,37 @@ isolated function checkScore(string metricName, string userQuery,
 # The signature every per-metric judge implements: scores one agent run.
 type TraceJudge isolated function (string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error;
 
+// Judges call out to a model provider, which fails with its own error type. Converted
+// here so the failure is reported as this module's `Error`, and so a judge that could
+// not be reached is distinguishable from a judge that scored the agent poorly.
+isolated function invokeJudge(string metricName, string userQuery, ai:Trace actualTrace,
+        TraceJudge scoreTrace) returns JudgeVerdict|Error {
+    JudgeVerdict|error judgeVerdict = scoreTrace(userQuery, actualTrace);
+    if judgeVerdict is error {
+        return error(string `[${metricName}] query "${userQuery}": the judge model could not be reached`,
+                judgeVerdict);
+    }
+    return judgeVerdict;
+}
+
 // Shared runner: replays the thread (or runs the single query), applies the
 // judge to every run, and fails on the first score below the threshold.
 isolated function runTraceJudge(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        string metricName, float judgeScoreThreshold, TraceJudge scoreTrace) returns error? {
+        string metricName, float judgeScoreThreshold, TraceJudge scoreTrace) returns Error? {
     check validateThreshold(metricName = metricName, judgeScoreThreshold = judgeScoreThreshold);
     if queries is string {
-        ai:Trace actualTrace = check targetAgent.run(query = queries, sessionId = uuid:createType4AsString());
-        JudgeVerdict judgeVerdict = check scoreTrace(queries, actualTrace);
+        ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = queries,
+                sessionId = uuid:createType4AsString());
+        JudgeVerdict judgeVerdict = check invokeJudge(metricName = metricName, userQuery = queries,
+                actualTrace = actualTrace, scoreTrace = scoreTrace);
         return checkScore(metricName = metricName, userQuery = queries, judgeVerdict = judgeVerdict,
                 passingScore = judgeScoreThreshold);
     }
     foreach ai:Trace expectedTrace in queries.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
-        ai:Trace actualTrace = check targetAgent.run(query = userQuery, sessionId = queries.id);
-        JudgeVerdict judgeVerdict = check scoreTrace(userQuery, actualTrace);
+        ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery, sessionId = queries.id);
+        JudgeVerdict judgeVerdict = check invokeJudge(metricName = metricName, userQuery = userQuery,
+                actualTrace = actualTrace, scoreTrace = scoreTrace);
         check checkScore(metricName = metricName, userQuery = userQuery, judgeVerdict = judgeVerdict,
                 passingScore = judgeScoreThreshold);
     }
@@ -127,14 +143,14 @@ isolated function runTraceJudge(ai:Agent targetAgent, ai:ConversationThread|stri
     needsEvalset: true
 }
 public isolated function evaluateSemanticSimilarity(ai:Agent targetAgent, ai:ConversationThread thread,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     check validateThreshold(metricName = "semantic-similarity", judgeScoreThreshold = judgeScoreThreshold);
     foreach ai:Trace expectedTrace in thread.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
-        ai:ChatAssistantMessage expectedOutput = check expectedTrace.output;
-        ai:Trace actualTrace = check targetAgent.run(query = userQuery, sessionId = thread.id);
-        ai:ChatAssistantMessage actualOutput = check actualTrace.output;
-        JudgeVerdict judgeVerdict = check judgeModel->generate(`You are an expert evaluator. Your sole criterion is SEMANTIC SIMILARITY: does the actual response convey the same meaning as the expected response?
+        ai:ChatAssistantMessage expectedOutput = check traceOutput(trace = expectedTrace);
+        ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery, sessionId = thread.id);
+        ai:ChatAssistantMessage actualOutput = check traceOutput(trace = actualTrace);
+        JudgeVerdict|error judgeVerdictResult = judgeModel->generate(`You are an expert evaluator. Your sole criterion is SEMANTIC SIMILARITY: does the actual response convey the same meaning as the expected response?
 
         ${asUntrustedData("User Query", userQuery)}
         ${asUntrustedData("Actual Response", actualOutput.content.toString())}
@@ -157,8 +173,12 @@ public isolated function evaluateSemanticSimilarity(ai:Agent targetAgent, ai:Con
         ${INJECTION_GUARD}
 
         Along with the score, provide a brief reasoning that justifies it, citing the specific similarities or differences you found.`);
-        check checkScore(metricName = "semantic-similarity", userQuery = userQuery, judgeVerdict = judgeVerdict,
-                passingScore = judgeScoreThreshold);
+        if judgeVerdictResult is error {
+            return error(string `[semantic-similarity] query "${userQuery}": the judge model could not be reached`,
+                    judgeVerdictResult);
+        }
+        check checkScore(metricName = "semantic-similarity", userQuery = userQuery,
+                judgeVerdict = judgeVerdictResult, passingScore = judgeScoreThreshold);
     }
 }
 
@@ -177,7 +197,7 @@ public isolated function evaluateSemanticSimilarity(ai:Agent targetAgent, ai:Con
     needsEvalset: false
 }
 public isolated function evaluateOutputAccuracy(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "accuracy",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -228,7 +248,7 @@ public isolated function evaluateOutputAccuracy(ai:Agent targetAgent, ai:Convers
 }
 public isolated function evaluateHelpfulness(ai:Agent targetAgent, ai:ConversationThread|string queries,
         ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8, string successCriteria = "")
-        returns error? {
+        returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "helpfulness",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -274,7 +294,7 @@ public isolated function evaluateHelpfulness(ai:Agent targetAgent, ai:Conversati
     needsEvalset: false
 }
 public isolated function evaluateClarity(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "clarity",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -320,7 +340,7 @@ public isolated function evaluateClarity(ai:Agent targetAgent, ai:ConversationTh
 }
 public isolated function evaluateCompleteness(ai:Agent targetAgent, ai:ConversationThread|string queries,
         ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8, string expectedCoverage = "")
-        returns error? {
+        returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "completeness",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -366,7 +386,7 @@ public isolated function evaluateCompleteness(ai:Agent targetAgent, ai:Conversat
     needsEvalset: false
 }
 public isolated function evaluateRelevance(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "relevance",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -412,7 +432,7 @@ public isolated function evaluateRelevance(ai:Agent targetAgent, ai:Conversation
     needsEvalset: false
 }
 public isolated function evaluateCoherence(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "coherence",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -456,7 +476,7 @@ public isolated function evaluateCoherence(ai:Agent targetAgent, ai:Conversation
     needsEvalset: false
 }
 public isolated function evaluateConciseness(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "conciseness",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -504,7 +524,7 @@ public isolated function evaluateConciseness(ai:Agent targetAgent, ai:Conversati
 }
 public isolated function evaluateSafety(ai:Agent targetAgent, ai:ConversationThread|string queries,
         ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8, string safetyContext = "")
-        returns error? {
+        returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "safety",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -557,7 +577,7 @@ public isolated function evaluateSafety(ai:Agent targetAgent, ai:ConversationThr
 }
 public isolated function evaluateTone(ai:Agent targetAgent, ai:ConversationThread|string queries,
         ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8, string toneContext = "")
-        returns error? {
+        returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "tone",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -605,7 +625,7 @@ public isolated function evaluateTone(ai:Agent targetAgent, ai:ConversationThrea
     needsEvalset: false
 }
 public isolated function evaluateGroundedness(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "groundedness",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -657,7 +677,7 @@ public isolated function evaluateGroundedness(ai:Agent targetAgent, ai:Conversat
     needsEvalset: false
 }
 public isolated function evaluateReasoningQuality(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "reasoning-quality",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -703,7 +723,7 @@ public isolated function evaluateReasoningQuality(ai:Agent targetAgent, ai:Conve
     needsEvalset: false
 }
 public isolated function evaluatePathEfficiency(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "path-efficiency",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -751,7 +771,7 @@ public isolated function evaluatePathEfficiency(ai:Agent targetAgent, ai:Convers
     needsEvalset: false
 }
 public isolated function evaluateErrorRecovery(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns error? {
+        ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8) returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "error-recovery",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {
@@ -805,7 +825,7 @@ public isolated function evaluateErrorRecovery(ai:Agent targetAgent, ai:Conversa
 }
 public isolated function evaluateInstructionFollowing(ai:Agent targetAgent, ai:ConversationThread|string queries,
         ai:ModelProvider judgeModel, float judgeScoreThreshold = 0.8, string successCriteria = "")
-        returns error? {
+        returns Error? {
     return runTraceJudge(targetAgent = targetAgent, queries = queries, metricName = "instruction-following",
             judgeScoreThreshold = judgeScoreThreshold,
             scoreTrace = isolated function(string userQuery, ai:Trace actualTrace) returns JudgeVerdict|error {

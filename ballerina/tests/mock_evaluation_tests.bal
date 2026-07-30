@@ -208,6 +208,41 @@ function lengthOutsideBoundsFails() {
     test:assertTrue(failureMessage.includes("[1, 5]"), "configured range missing from failure");
 }
 
+// ***** Module error type *****
+
+// Failures surface as the module's distinct `Error`, not as a plain `error`, so
+// callers can discriminate on type. A plain `error` would satisfy `is error` but not
+// `is Error`, so this asserts the distinct type specifically.
+@test:Config {
+    groups: ["mock-evaluations", "error-type"]
+}
+function judgeFailureIsModuleError() {
+    error? evalResult = evaluateHelpfulness(targetAgent = mockAgent("Some unhelpful text."),
+            queries = "what is 1 + 1", judgeModel = mockJudge(0.25, "mock: does not help"),
+            judgeScoreThreshold = 0.75);
+    test:assertTrue(evalResult is Error, "judge failure should be an ai.eval:Error");
+}
+
+// The same holds for rule-based templates.
+@test:Config {
+    groups: ["mock-evaluations", "error-type"]
+}
+function ruleBasedFailureIsModuleError() {
+    error? evalResult = assertLengthCompliance(targetAgent = mockAgent("This response is far too long."),
+            queries = "what is 1 + 1", minLength = 1, maxLength = 5);
+    test:assertTrue(evalResult is Error, "rule-based failure should be an ai.eval:Error");
+}
+
+// Configuration errors raised before the agent runs carry the same type.
+@test:Config {
+    groups: ["mock-evaluations", "error-type"]
+}
+function configurationFailureIsModuleError() {
+    error? evalResult = assertContentSafety(targetAgent = mockAgent("The answer is 2."),
+            queries = "what is 1 + 1", prohibitedStrings = []);
+    test:assertTrue(evalResult is Error, "configuration failure should be an ai.eval:Error");
+}
+
 // ***** Prompt-injection hardening *****
 
 // Untrusted text is wrapped in the fence markers and kept intact.

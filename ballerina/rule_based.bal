@@ -34,7 +34,7 @@ import ballerina/uuid;
     needsEvalset: false
 }
 public isolated function assertLengthCompliance(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        int minLength = 1, int maxLength = 10000) returns error? {
+        int minLength = 1, int maxLength = 10000) returns Error? {
     if queries is string {
         string actualResponse = check getAgentResponse(targetAgent = targetAgent, userQuery = queries,
                 sessionId = uuid:createType4AsString());
@@ -78,10 +78,10 @@ public enum TrajectoryMatchMode {
     needsEvalset: true
 }
 public isolated function evaluateToolTrajectory(ai:Agent targetAgent, ai:ConversationThread thread,
-        TrajectoryMatchMode matchMode = STRICT) returns error? {
+        TrajectoryMatchMode matchMode = STRICT) returns Error? {
     foreach ai:Trace expectedTrace in thread.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
-        ai:Trace actualTrace = check targetAgent.run(query = userQuery, sessionId = thread.id);
+        ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery, sessionId = thread.id);
         ai:FunctionCall[] expectedToolCalls = expectedTrace.toolCalls ?: [];
         ai:FunctionCall[] actualToolCalls = actualTrace.toolCalls ?: [];
         if !matchTrajectory(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls,
@@ -108,10 +108,10 @@ public isolated function evaluateToolTrajectory(ai:Agent targetAgent, ai:Convers
     needsEvalset: true
 }
 public isolated function assertExactMatch(ai:Agent targetAgent, ai:ConversationThread thread,
-        boolean caseSensitive = true, boolean stripWhitespace = true) returns error? {
+        boolean caseSensitive = true, boolean stripWhitespace = true) returns Error? {
     foreach ai:Trace expectedTrace in thread.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
-        ai:ChatAssistantMessage expectedOutput = check expectedTrace.output;
+        ai:ChatAssistantMessage expectedOutput = check traceOutput(trace = expectedTrace);
         string rawExpected = expectedOutput.content ?: "";
         string rawActual = check getAgentResponse(targetAgent = targetAgent, userQuery = userQuery,
                 sessionId = thread.id);
@@ -146,7 +146,7 @@ public isolated function assertExactMatch(ai:Agent targetAgent, ai:ConversationT
     needsEvalset: false
 }
 public isolated function assertContentSafety(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        string[] prohibitedStrings, boolean caseSensitive = false) returns error? {
+        string[] prohibitedStrings, boolean caseSensitive = false) returns Error? {
     if prohibitedStrings.length() == 0 {
         return error("[content-safety] no prohibited strings configured; add at least one prohibited string");
     }
@@ -180,10 +180,10 @@ public isolated function assertContentSafety(ai:Agent targetAgent, ai:Conversati
     needsEvalset: true
 }
 public isolated function assertContainsMatch(ai:Agent targetAgent, ai:ConversationThread thread,
-        boolean caseSensitive = false) returns error? {
+        boolean caseSensitive = false) returns Error? {
     foreach ai:Trace expectedTrace in thread.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
-        ai:ChatAssistantMessage expectedOutput = check expectedTrace.output;
+        ai:ChatAssistantMessage expectedOutput = check traceOutput(trace = expectedTrace);
         string expectedResponse = expectedOutput.content ?: "";
         string actualResponse = check getAgentResponse(targetAgent = targetAgent, userQuery = userQuery,
                 sessionId = thread.id);
@@ -208,15 +208,16 @@ public isolated function assertContainsMatch(ai:Agent targetAgent, ai:Conversati
     needsEvalset: false
 }
 public isolated function assertIterationEfficiency(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        int maxIterations = 5) returns error? {
+        int maxIterations = 5) returns Error? {
     if queries is string {
-        ai:Trace actualTrace = check targetAgent.run(query = queries, sessionId = uuid:createType4AsString());
+        ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = queries,
+                sessionId = uuid:createType4AsString());
         return checkIterationCount(userQuery = queries, actualTrace = actualTrace,
                 maxIterations = maxIterations);
     }
     foreach ai:Trace expectedTrace in queries.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
-        ai:Trace actualTrace = check targetAgent.run(query = userQuery, sessionId = queries.id);
+        ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery, sessionId = queries.id);
         check checkIterationCount(userQuery = userQuery, actualTrace = actualTrace,
                 maxIterations = maxIterations);
     }
@@ -240,7 +241,7 @@ public isolated function assertIterationEfficiency(ai:Agent targetAgent, ai:Conv
     needsEvalset: false
 }
 public isolated function assertContentCoverage(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        string[] requiredStrings, boolean caseSensitive = false) returns error? {
+        string[] requiredStrings, boolean caseSensitive = false) returns Error? {
     if requiredStrings.length() == 0 {
         return error("[content-coverage] no required strings configured; add at least one required string");
     }
@@ -284,15 +285,16 @@ public isolated function assertContentCoverage(ai:Agent targetAgent, ai:Conversa
     needsEvalset: false
 }
 public isolated function assertLatencyPerformance(ai:Agent targetAgent, ai:ConversationThread|string queries,
-        decimal maxLatencySeconds = 10) returns error? {
+        decimal maxLatencySeconds = 10) returns Error? {
     if queries is string {
-        ai:Trace actualTrace = check targetAgent.run(query = queries, sessionId = uuid:createType4AsString());
+        ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = queries,
+                sessionId = uuid:createType4AsString());
         return checkLatency(userQuery = queries, actualTrace = actualTrace,
                 maxLatencySeconds = maxLatencySeconds);
     }
     foreach ai:Trace expectedTrace in queries.traces {
         string userQuery = ai:getUserQuery(trace = expectedTrace);
-        ai:Trace actualTrace = check targetAgent.run(query = userQuery, sessionId = queries.id);
+        ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery, sessionId = queries.id);
         check checkLatency(userQuery = userQuery, actualTrace = actualTrace,
                 maxLatencySeconds = maxLatencySeconds);
     }
@@ -300,19 +302,41 @@ public isolated function assertLatencyPerformance(ai:Agent targetAgent, ai:Conve
 
 // ***** Shared helpers *****
 
+// The `ballerina/ai` APIs fail with `ai:Error`, which is a distinct type and so not a
+// subtype of this module's `Error`. Failures are converted at the boundary, keeping the
+// original error as the cause, so every function in this module can report `Error`.
+
+isolated function runAgent(ai:Agent targetAgent, string userQuery, string sessionId)
+        returns ai:Trace|Error {
+    ai:Trace|error actualTrace = targetAgent.run(query = userQuery, sessionId = sessionId);
+    if actualTrace is error {
+        return error(string `the agent failed to run the query "${userQuery}"`, actualTrace);
+    }
+    return actualTrace;
+}
+
+isolated function traceOutput(ai:Trace trace) returns ai:ChatAssistantMessage|Error {
+    ai:ChatAssistantMessage|error output = trace.output;
+    if output is error {
+        return error("the trace carries no assistant output", output);
+    }
+    return output;
+}
+
 isolated function getAgentResponse(ai:Agent targetAgent, string userQuery, string sessionId)
-        returns string|error {
-    ai:Trace actualTrace = check targetAgent.run(query = userQuery, sessionId = sessionId);
+        returns string|Error {
+    ai:Trace actualTrace = check runAgent(targetAgent = targetAgent, userQuery = userQuery,
+            sessionId = sessionId);
     return getResponseText(trace = actualTrace);
 }
 
-isolated function getResponseText(ai:Trace trace) returns string|error {
-    ai:ChatAssistantMessage output = check trace.output;
+isolated function getResponseText(ai:Trace trace) returns string|Error {
+    ai:ChatAssistantMessage output = check traceOutput(trace = trace);
     return output.content ?: "";
 }
 
 isolated function checkLength(string userQuery, string actualResponse, int minLength, int maxLength)
-        returns error? {
+        returns Error? {
     int responseLength = actualResponse.length();
     if responseLength < minLength || responseLength > maxLength {
         return error(string `[length-compliance] query "${userQuery}": response length ${responseLength} is outside the range [${minLength}, ${maxLength}]`);
@@ -320,7 +344,7 @@ isolated function checkLength(string userQuery, string actualResponse, int minLe
 }
 
 isolated function checkProhibitedContent(string userQuery, string actualResponse, string[] prohibitedStrings,
-        boolean caseSensitive) returns error? {
+        boolean caseSensitive) returns Error? {
     string compareResponse = caseSensitive ? actualResponse : actualResponse.toLowerAscii();
     string[] foundStrings = [];
     foreach string prohibitedString in prohibitedStrings {
@@ -335,7 +359,7 @@ isolated function checkProhibitedContent(string userQuery, string actualResponse
 }
 
 isolated function checkLatency(string userQuery, ai:Trace actualTrace, decimal maxLatencySeconds)
-        returns error? {
+        returns Error? {
     decimal actualLatencySeconds = time:utcDiffSeconds(actualTrace.endTime, actualTrace.startTime);
     if actualLatencySeconds > maxLatencySeconds {
         return error(string `[latency-performance] query "${userQuery}": agent responded in ${actualLatencySeconds}s, exceeding the limit of ${maxLatencySeconds}s`);
@@ -343,7 +367,7 @@ isolated function checkLatency(string userQuery, ai:Trace actualTrace, decimal m
 }
 
 isolated function checkIterationCount(string userQuery, ai:Trace actualTrace, int maxIterations)
-        returns error? {
+        returns Error? {
     int actualIterations = actualTrace.iterations.length();
     if actualIterations > maxIterations {
         return error(string `[iteration-efficiency] query "${userQuery}": agent used ${actualIterations} iterations, exceeding the limit of ${maxIterations}`);
