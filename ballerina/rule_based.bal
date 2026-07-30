@@ -86,7 +86,9 @@ public isolated function evaluateToolTrajectory(ai:Agent targetAgent, ai:Convers
         ai:FunctionCall[] actualToolCalls = actualTrace.toolCalls ?: [];
         if !matchTrajectory(expectedToolCalls = expectedToolCalls, actualToolCalls = actualToolCalls,
                 matchMode = matchMode) {
-            return error(string `[tool-trajectory] query "${userQuery}": tool calls do not satisfy ${matchMode} matching; expected ${describeToolCalls(toolCalls = expectedToolCalls)} but got ${describeToolCalls(toolCalls = actualToolCalls)}`);
+            return error(string `[tool-trajectory] query "${userQuery}": tool calls do not satisfy ` +
+                    string `${matchMode} matching; expected ${describeToolCalls(toolCalls = expectedToolCalls)} ` +
+                    string `but got ${describeToolCalls(toolCalls = actualToolCalls)}`);
         }
     }
 }
@@ -124,7 +126,11 @@ public isolated function assertExactMatch(ai:Agent targetAgent, ai:ConversationT
         if actualResponse != expectedResponse {
             int mismatchIndex = findFirstMismatch(expectedResponse = expectedResponse,
                     actualResponse = actualResponse);
-            return error(string `[exact-match] query "${userQuery}": responses differ at character index ${mismatchIndex} (expected lengths ${expectedResponse.length()}, actual ${actualResponse.length()}); expected "…${excerptAround(text = expectedResponse, mismatchIndex = mismatchIndex)}…" but got "…${excerptAround(text = actualResponse, mismatchIndex = mismatchIndex)}…"`);
+            return error(string `[exact-match] query "${userQuery}": responses differ at character ` +
+                    string `index ${mismatchIndex} (expected lengths ${expectedResponse.length()}, ` +
+                    string `actual ${actualResponse.length()}); expected ` +
+                    string `"…${excerptAround(text = expectedResponse, mismatchIndex = mismatchIndex)}…" ` +
+                    string `but got "…${excerptAround(text = actualResponse, mismatchIndex = mismatchIndex)}…"`);
         }
     }
 }
@@ -190,7 +196,9 @@ public isolated function assertContainsMatch(ai:Agent targetAgent, ai:Conversati
         string compareExpected = caseSensitive ? expectedResponse : expectedResponse.toLowerAscii();
         string compareActual = caseSensitive ? actualResponse : actualResponse.toLowerAscii();
         if !compareActual.includes(compareExpected) {
-            return error(string `[contains-match] query "${userQuery}": expected response not found in agent response (actual length ${actualResponse.length()}, expected length ${expectedResponse.length()})`);
+            return error(string `[contains-match] query "${userQuery}": expected response not found ` +
+                    string `in agent response (actual length ${actualResponse.length()}, ` +
+                    string `expected length ${expectedResponse.length()})`);
         }
     }
 }
@@ -268,7 +276,9 @@ public isolated function assertContentCoverage(ai:Agent targetAgent, ai:Conversa
         }
     }
     if missingStrings.length() > 0 {
-        return error(string `[content-coverage] ${missingStrings.length()}/${requiredStrings.length()} required string(s) missing from the agent output: "${string:'join("\", \"", ...missingStrings)}"`);
+        return error(string `[content-coverage] ${missingStrings.length()}/${requiredStrings.length()} ` +
+                string `required string(s) missing from the agent output: ` +
+                string `"${string:'join("\", \"", ...missingStrings)}"`);
     }
 }
 
@@ -339,7 +349,8 @@ isolated function checkLength(string userQuery, string actualResponse, int minLe
         returns Error? {
     int responseLength = actualResponse.length();
     if responseLength < minLength || responseLength > maxLength {
-        return error(string `[length-compliance] query "${userQuery}": response length ${responseLength} is outside the range [${minLength}, ${maxLength}]`);
+        return error(string `[length-compliance] query "${userQuery}": response length ` +
+                string `${responseLength} is outside the range [${minLength}, ${maxLength}]`);
     }
 }
 
@@ -354,7 +365,9 @@ isolated function checkProhibitedContent(string userQuery, string actualResponse
         }
     }
     if foundStrings.length() > 0 {
-        return error(string `[content-safety] query "${userQuery}": response contains ${foundStrings.length()} prohibited string(s): "${string:'join("\", \"", ...foundStrings)}"`);
+        return error(string `[content-safety] query "${userQuery}": response contains ` +
+                string `${foundStrings.length()} prohibited string(s): ` +
+                string `"${string:'join("\", \"", ...foundStrings)}"`);
     }
 }
 
@@ -362,7 +375,8 @@ isolated function checkLatency(string userQuery, ai:Trace actualTrace, decimal m
         returns Error? {
     decimal actualLatencySeconds = time:utcDiffSeconds(actualTrace.endTime, actualTrace.startTime);
     if actualLatencySeconds > maxLatencySeconds {
-        return error(string `[latency-performance] query "${userQuery}": agent responded in ${actualLatencySeconds}s, exceeding the limit of ${maxLatencySeconds}s`);
+        return error(string `[latency-performance] query "${userQuery}": agent responded in ` +
+                string `${actualLatencySeconds}s, exceeding the limit of ${maxLatencySeconds}s`);
     }
 }
 
@@ -370,7 +384,8 @@ isolated function checkIterationCount(string userQuery, ai:Trace actualTrace, in
         returns Error? {
     int actualIterations = actualTrace.iterations.length();
     if actualIterations > maxIterations {
-        return error(string `[iteration-efficiency] query "${userQuery}": agent used ${actualIterations} iterations, exceeding the limit of ${maxIterations}`);
+        return error(string `[iteration-efficiency] query "${userQuery}": agent used ` +
+                string `${actualIterations} iterations, exceeding the limit of ${maxIterations}`);
     }
 }
 

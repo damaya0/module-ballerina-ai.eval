@@ -68,7 +68,8 @@ const float MAX_SCORE = 1.0;
 // threshold is reported immediately rather than after an agent run and an LLM call.
 isolated function validateThreshold(string metricName, float judgeScoreThreshold) returns Error? {
     if judgeScoreThreshold < MIN_SCORE || judgeScoreThreshold > MAX_SCORE {
-        return error(string `[${metricName}] judgeScoreThreshold ${judgeScoreThreshold} is outside the valid range [${MIN_SCORE}, ${MAX_SCORE}]`);
+        return error(string `[${metricName}] judgeScoreThreshold ${judgeScoreThreshold} is outside ` +
+                string `the valid range [${MIN_SCORE}, ${MAX_SCORE}]`);
     }
 }
 
@@ -80,10 +81,14 @@ isolated function checkScore(string metricName, string userQuery,
     // into returning an inflated score is the payoff an injection attempt aims for,
     // so this is the backstop for the fencing in `asUntrustedData`.
     if evalScore < MIN_SCORE || evalScore > MAX_SCORE {
-        return error(string `[${metricName}] query "${userQuery}": judge returned score ${evalScore}, outside the valid range [${MIN_SCORE}, ${MAX_SCORE}]. Judge reasoning: ${judgeVerdict.judgeReasoning}`);
+        return error(string `[${metricName}] query "${userQuery}": judge returned score ${evalScore}, ` +
+                string `outside the valid range [${MIN_SCORE}, ${MAX_SCORE}]. ` +
+                string `Judge reasoning: ${judgeVerdict.judgeReasoning}`);
     }
     if evalScore < passingScore {
-        return error(string `[${metricName}] query "${userQuery}": judge score ${evalScore} is below the passing score ${passingScore}. Judge reasoning: ${judgeVerdict.judgeReasoning}`);
+        return error(string `[${metricName}] query "${userQuery}": judge score ${evalScore} is below ` +
+                string `the passing score ${passingScore}. ` +
+                string `Judge reasoning: ${judgeVerdict.judgeReasoning}`);
     }
 }
 
