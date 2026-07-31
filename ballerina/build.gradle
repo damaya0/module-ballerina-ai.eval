@@ -43,6 +43,9 @@ ballerina {
     langVersion = ballerinaLangVersion
     testCoverageParam = "--code-coverage --coverage-format=xml --includes=ballerina.*"
     packageOrganization = packageOrg
+    // The package has no platform dependencies, so `bal` builds a platform-independent
+    // bala. Without this the plugin looks for a `java21` bala and the push fails.
+    platform = "any"
 }
 
 configurations {
